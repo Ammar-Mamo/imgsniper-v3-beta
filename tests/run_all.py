@@ -25,6 +25,7 @@ SUITES = [
     ('test_fixes.py', 'Round 1 -- audit findings P0/P1 verification'),
     ('verify_e2e.py', 'End-to-end scenarios on real images'),
     ('test_fixes_round2.py', 'Round 2 -- safety gate, date criterion, quality floor'),
+    ('test_fixes_round3.py', 'Round 3 -- P0-4/P0-8 scoring, P2-13/P2-14 dates, P2-18 language'),
 ]
 
 
