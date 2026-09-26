@@ -17,7 +17,13 @@ class I18nManager:
             "en": ENGLISH_TRANSLATIONS,
             "ar": ARABIC_TRANSLATIONS
         }
-        self.current_language = "ar"
+        # Audit finding P2-18: this was a FOURTH, previously unnoticed
+        # language default. config.py, config/settings.json and
+        # main_cli.py were unified on "en", but this constructor
+        # default stayed "ar", so any code path that rendered
+        # text before set_language() ran -- notably the report
+        # generators -- still came out in Arabic.
+        self.current_language = "en"
     
     def set_language(self, language: str):
         """Set the current language."""
