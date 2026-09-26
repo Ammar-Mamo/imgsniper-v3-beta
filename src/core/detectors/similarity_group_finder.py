@@ -272,8 +272,14 @@ class SimilarityGroupFinder:
                         try:
                             matches = future.result()
                             all_matches.extend(matches)
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            # Audit P2-20: was a silent "pass". A failed batch
+                            # discards EVERY match that batch would have
+                            # produced, so whole groups quietly vanish from the
+                            # report. The two sibling failure paths in this
+                            # module already log at WARNING; this is the same
+                            # class of failure and now behaves like them.
+                            logging.warning(f"Error collecting batch results: {e}")
             except Exception:
                 return self._find_similar_groups_sequential(hash_items, threshold, console)
         

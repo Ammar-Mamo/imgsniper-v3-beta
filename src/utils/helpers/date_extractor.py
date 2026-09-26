@@ -5,6 +5,7 @@ Advanced date extraction from filenames and EXIF data
 # وحدة مساعدة - دوال مشتركة ومساعدة للوحدات الأخرى
 
 
+import logging
 import re
 from datetime import datetime
 from pathlib import Path
@@ -179,10 +180,15 @@ class DateExtractor:
                     tag_name = TAGS.get(tag_id, tag_id)
                     if isinstance(value, str):
                         tag_values[tag_name] = value
-            except Exception:
-                pass
-        except Exception:
-            pass
+            except Exception as e:
+                # Audit P2-20: was a silent "pass". The Exif sub-IFD is where
+                # DateTimeOriginal lives, so losing it silently downgrades the
+                # date source to "filename" and can change WHICH image a group
+                # keeps. DEBUG because corrupt EXIF is common and expected.
+                logging.debug('EXIF sub-IFD (0x8769) unreadable: %s', e)
+        except Exception as e:
+            # Audit P2-20: was a silent "pass" - the whole EXIF block failed.
+            logging.debug('EXIF unreadable: %s', e)
 
         return tag_values
 

@@ -2,6 +2,7 @@
 File selection logic for choosing the best file from a group
 """
 
+import logging
 import math
 from pathlib import Path
 from typing import List, Optional, Tuple
@@ -135,8 +136,12 @@ class FileSelector:
             try:
                 with Image.open(f) as img:
                     pixels.append(img.width * img.height)
-            except Exception:
-                pass
+            except Exception as e:
+                # Audit P2-20: was a silent "pass". An unreadable file drops out
+                # of the pixel list, which weakens the quality-floor guard (it
+                # compares the kept image against the group's best resolution)
+                # with no indication that input data was missing.
+                logging.debug('Pixel count unreadable for %s: %s', f, e)
         return pixels
 
     def _compute_resolution_boost(self, files: List[str]) -> float:
@@ -179,8 +184,11 @@ class FileSelector:
             try:
                 with Image.open(f) as img:
                     best_px = max(best_px, img.width * img.height)
-            except Exception:
-                pass
+            except Exception as e:
+                # Audit P2-20: was a silent "pass". This feeds the
+                # resolution-sacrifice warning, so an unreadable candidate can
+                # silently suppress a warning that should have been shown.
+                logging.debug('Pixel count unreadable for %s: %s', f, e)
 
         return (kept_px, best_px) if best_px > kept_px else None
 

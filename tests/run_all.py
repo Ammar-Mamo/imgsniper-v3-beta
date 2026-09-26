@@ -26,6 +26,7 @@ SUITES = [
     ('verify_e2e.py', 'End-to-end scenarios on real images'),
     ('test_fixes_round2.py', 'Round 2 -- safety gate, date criterion, quality floor'),
     ('test_fixes_round3.py', 'Round 3 -- P0-4/P0-8 scoring, P2-13/P2-14 dates, P2-18 language'),
+    ('test_fixes_round4.py', 'Round 4 -- P2-20 logging, P2-22 save_config, P2-21 regression'),
 ]
 
 
@@ -94,6 +95,7 @@ def main() -> int:
     if failed:
         print('  RESULT: FAILED -- inspect the per-suite logs in the project root:')
         print('          test_run.log / verify_e2e.log / test_run_round2.log')
+        print('          test_run_round3.log / test_run_round4.log')
         return 1
     print('  RESULT: ALL SUITES PASSED')
     return 0

@@ -109,8 +109,12 @@ class SimilarityHashCalculator:
                         result_path, img_hash = _calculate_perceptual_hash_worker(img_path, hash_size)
                         if img_hash is not None:
                             image_hashes[result_path] = img_hash
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        # Audit P2-20: was a silent "pass". An image whose
+                        # perceptual hash cannot be computed never enters
+                        # image_hashes, so it is invisible to the entire
+                        # similarity scan and no trace of it is left behind.
+                        logging.debug('Perceptual hash failed for %s: %s', img_path, e)
                     progress.advance(task)
         
         return image_hashes

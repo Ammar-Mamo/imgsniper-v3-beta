@@ -15,6 +15,7 @@ Duplicate image detection functionality using SHA256 hashing
 
 
 import hashlib
+import logging
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -128,8 +129,13 @@ class DuplicateDetector:
                             if file_hash not in hash_to_files:
                                 hash_to_files[file_hash] = []
                             hash_to_files[file_hash].append(result_path)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        # Audit P2-20: this was a silent "pass". A file that
+                        # cannot be hashed is silently absent from the duplicate
+                        # map, so it can never be matched against anything and
+                        # the user had no way to find out why. DEBUG keeps this
+                        # per-image loop quiet at the default INFO level.
+                        logging.debug('File hash failed for %s: %s', img_path, e)
                     progress.advance(task)
         
         # البحث عن نسخة مكررةs

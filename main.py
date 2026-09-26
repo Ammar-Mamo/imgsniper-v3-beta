@@ -36,9 +36,17 @@ sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 from src.cli.main_cli import MainCLI
 from src.core.i18n.i18n import get_text
+from src.utils.helpers.logging_setup import setup_logging
 
 def main():
     """Main entry point for the application."""
+    # Audit finding P2-20: configure logging ONCE at boot from the "logging"
+    # section of config/settings.json. Until now nothing in the project ever
+    # attached a handler, so the logging.warning() calls in the parallel
+    # similarity path only reached the root logger's lastResort handler (bare
+    # unformatted stderr text) and imgsniper.log was never written at all.
+    # setup_logging() is side-effect safe: it never raises.
+    setup_logging()
     try:
         cli = MainCLI()
         cli.run()
