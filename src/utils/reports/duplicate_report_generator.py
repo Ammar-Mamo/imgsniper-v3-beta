@@ -63,7 +63,8 @@ class DuplicateReportGenerator:
                             f.write(f"  💾 Size: {kept_info['size_mb']} MB\n")
                             f.write(f"  📐 Dimensions: {kept_info['width']}x{kept_info['height']}\n")
                             f.write(f"  📅 Date Extracted: {kept_info['extracted_date']}\n")
-                            f.write(f"  🔢 Filename Importance: {kept_info['filename_importance']}/10\n")
+                            f.write(f"  🧭 Date Source:    {kept_info.get('date_source', 'n/a')}\n")
+                            f.write(f"  🔢 Filename Importance: {kept_info['filename_importance']}/9\n")
                             f.write(f"  🕒 Modified: {kept_info['modified_time']}\n")
                             # Detailed اختيار سبب using جديد سجلic
                             reason_prefix = self.formatter.get_selection_reason_prefix()
@@ -92,7 +93,8 @@ class DuplicateReportGenerator:
                                 f.write(f"  💾 Size: {deleted_info['size_mb']} MB\n")
                                 f.write(f"  📐 Dimensions: {deleted_info['width']}x{deleted_info['height']}\n")
                                 f.write(f"  📅 Date Extracted: {deleted_info['extracted_date']}\n")
-                                f.write(f"  🔢 Filename Importance: {deleted_info['filename_importance']}/10\n")
+                                f.write(f"  🧭 Date Source:    {deleted_info.get('date_source', 'n/a')}\n")
+                                f.write(f"  🔢 Filename Importance: {deleted_info['filename_importance']}/9\n")
                                 f.write(f"  🕒 Modified: {deleted_info['modified_time']}\n")
                                 # إضافة سبب الحذف
                                 deletion_reason = self.formatter.get_deletion_reason(file_path, kept_file, temp_all_files_info)
@@ -152,7 +154,8 @@ class DuplicateReportGenerator:
                             f.write(f"  💾 Size: {kept_info['size_mb']} MB\n")
                             f.write(f"  📐 Dimensions: {kept_info['width']}x{kept_info['height']}\n")
                             f.write(f"  📅 Date Extracted: {kept_info['extracted_date']}\n")
-                            f.write(f"  🔢 Filename Importance: {kept_info['filename_importance']}/10\n")
+                            f.write(f"  🧭 Date Source:    {kept_info.get('date_source', 'n/a')}\n")
+                            f.write(f"  🔢 Filename Importance: {kept_info['filename_importance']}/9\n")
                             f.write(f"  🕒 Modified: {kept_info['modified_time']}\n")
                             # Detailed اختيار سبب using جديد سجلic
                             reason_prefix = self.formatter.get_selection_reason_prefix()
@@ -176,7 +179,8 @@ class DuplicateReportGenerator:
                                 f.write(f"  💾 Size: {deleted_info['size_mb']} MB\n")
                                 f.write(f"  📐 Dimensions: {deleted_info['width']}x{deleted_info['height']}\n")
                                 f.write(f"  📅 Date Extracted: {deleted_info['extracted_date']}\n")
-                                f.write(f"  🔢 Filename Importance: {deleted_info['filename_importance']}/10\n")
+                                f.write(f"  🧭 Date Source:    {deleted_info.get('date_source', 'n/a')}\n")
+                                f.write(f"  🔢 Filename Importance: {deleted_info['filename_importance']}/9\n")
                                 f.write(f"  🕒 Modified: {deleted_info['modified_time']}\n")
                                 # إضافة سبب الحذف
                                 deletion_reason = self.formatter.get_deletion_reason(file_path, kept_file, all_files_info)

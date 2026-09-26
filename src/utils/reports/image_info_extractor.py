@@ -10,6 +10,7 @@ from typing import Dict, Any
 from PIL import Image
 
 from ...utils.helpers.date_extractor import date_extractor
+from ...core.config import config
 
 
 class ImageInfoExtractor:
@@ -37,8 +38,23 @@ class ImageInfoExtractor:
                 format_type = "Unknown"
                 mode = "Unknown"
             
-            # Date extrعمل
-            extracted_date = date_extractor.extract_date_from_filename(path.name)
+            # Date extraction.
+            #
+            # Audit finding P2-13: this read the FILENAME only, so a
+            # photo whose date lives in EXIF -- the normal case for a
+            # camera file named IMG_1234.jpg -- was reported as
+            # "Unknown" even though the selection engine had already
+            # used that very EXIF date to decide which copy to keep.
+            # The report therefore could not justify the decision it
+            # was documenting.
+            #
+            # get_best_date() merges EXIF and filename exactly as the
+            # engine does, and the winning source is reported next to
+            # the value so the user can see where the date came from.
+            date_priority = config.get('priorities.date_priority', 'oldest')
+            extracted_date, date_source = date_extractor.get_best_date(
+                file_path, date_priority
+            )
             filename_importance = date_extractor.get_filename_importance_score(path.name)
             
             return {
@@ -51,6 +67,7 @@ class ImageInfoExtractor:
                 "format": format_type,
                 "mode": mode,
                 "extracted_date": extracted_date.strftime('%Y-%m-%d %H:%M:%S') if extracted_date else "Unknown",
+                "date_source": date_source,
                 "filename_importance": filename_importance,
                 "modified_time": datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S'),
                 "created_time": datetime.fromtimestamp(stat.st_ctime).strftime('%Y-%m-%d %H:%M:%S')

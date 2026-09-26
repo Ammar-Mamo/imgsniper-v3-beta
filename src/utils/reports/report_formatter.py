@@ -210,7 +210,7 @@ class ReportFormatter:
             if 'error' not in deleted_info:
                 if kept_info['filename_importance'] > deleted_info['filename_importance']:
                     context = self._get_context_note(kept_info, deleted_info)
-                    return f"better filename importance ({kept_info['filename_importance']}/10 vs {deleted_info['filename_importance']}/10{context})"
+                    return f"better filename importance ({kept_info['filename_importance']}/9 vs {deleted_info['filename_importance']}/9{context})"
         return None
     
     def _get_context_note(self, kept_info: Dict[str, Any], deleted_info: Dict[str, Any]) -> str:
@@ -349,9 +349,9 @@ class ReportFormatter:
         
         # فحص ملفاسم أهمية
         if kept_info.get('filename_importance', 0) > deleted_info.get('filename_importance', 0):
-            differences.append(f"better filename importance ({kept_info['filename_importance']}/10 vs {deleted_info['filename_importance']}/10)")
+            differences.append(f"better filename importance ({kept_info['filename_importance']}/9 vs {deleted_info['filename_importance']}/9)")
         elif kept_info.get('filename_importance', 0) < deleted_info.get('filename_importance', 0):
-            differences.append(f"worse filename importance ({kept_info['filename_importance']}/10 vs {deleted_info['filename_importance']}/10)")
+            differences.append(f"worse filename importance ({kept_info['filename_importance']}/9 vs {deleted_info['filename_importance']}/9)")
         
         # If we found differences, تقرير the most مهم واحد
         if differences:

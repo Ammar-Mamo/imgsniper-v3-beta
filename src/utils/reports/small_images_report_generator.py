@@ -52,7 +52,8 @@ class SmallImagesReportGenerator:
                         f.write(f"  💾 Size: {file_info['size_mb']} MB\n")
                         f.write(f"  📐 Dimensions: {file_info['width']}x{file_info['height']}\n")
                         f.write(f"  📅 Date Extracted: {file_info.get('extracted_date', 'Unknown')}\n")
-                        f.write(f"  🔢 Filename Importance: {file_info.get('filename_importance', 0)}/10\n")
+                        f.write(f"  🧭 Date Source:    {file_info.get('date_source', 'n/a')}\n")
+                        f.write(f"  🔢 Filename Importance: {file_info.get('filename_importance', 0)}/9\n")
                         f.write(f"  🕒 Modified: {file_info.get('modified_time', 'Unknown')}\n")
                         
                         # تحديد سبب الحذف بناءً على الأبعاد
