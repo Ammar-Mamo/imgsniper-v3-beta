@@ -25,8 +25,7 @@ ARABIC_TRANSLATIONS = {
         "similar": "حذف الصور المتشابهة بصريا phash",
         "small": "حذف الصور صغيرة الحجم",
         "watermark": "حذف العلامات المائية من الصور",
-        "face_detect_delete": "تحديد الوجوه تلقائيا واختيار وجه لحذف كافة صوره",
-        "face_detect_blur": "تحديد الوجوه تلقائيا واختيار وجه للتغبيش على كافة صوره",
+        "face_detect_delete": "أداة كشف الوجوه تلقائيا (FaceFinder Pro)",
         "priorities": "إعدادات الأولويات",
         "back": "العودة",
         "exit": "خروج"

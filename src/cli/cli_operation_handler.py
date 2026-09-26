@@ -190,11 +190,6 @@ class CLIOperationHandler:
         self.console.print(f"[yellow]{i18n.get('common.coming_soon')}[/yellow]")
         input(i18n.get('common.press_any_key'))
     
-    def handle_face_detection_blur(self):
-        """Handle face detection and blurring."""
-        self.console.print(f"[yellow]{i18n.get('common.coming_soon')}[/yellow]")
-        input(i18n.get('common.press_any_key'))
-    
     def _get_minimum_dimensions(self) -> tuple:
         """Get minimum dimensions for small images from user."""
         try:

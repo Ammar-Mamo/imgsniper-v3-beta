@@ -25,8 +25,7 @@ ENGLISH_TRANSLATIONS = {
         "similar": "Delete Visually Similar Images (pHash)",
         "small": "Delete Small Images",
         "watermark": "Remove Watermarks from Images",
-        "face_detect_delete": "Auto Face Detection & Delete All Photos of Selected Face",
-        "face_detect_blur": "Auto Face Detection & Blur Selected Face in All Photos",
+        "face_detect_delete": "Auto Face Detection Tool (FaceFinder Pro)",
         "priorities": "Priority Settings",
         "back": "Back",
         "exit": "Exit"

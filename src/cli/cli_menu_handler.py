@@ -33,17 +33,16 @@ class CLIMenuHandler:
         self.console.print(f"4 - {i18n.get('image_operations.small')}")
         self.console.print(f"5 - {i18n.get('image_operations.watermark')}")
         self.console.print(f"6 - {i18n.get('image_operations.face_detect_delete')}")
-        self.console.print(f"7 - {i18n.get('image_operations.face_detect_blur')}")
-        self.console.print(f"8 - {i18n.get('image_operations.priorities')}")
-        self.console.print(f"9 - {i18n.get('image_operations.back')}")
+        self.console.print(f"7 - {i18n.get('image_operations.priorities')}")
+        self.console.print(f"8 - {i18n.get('image_operations.back')}")
         self.console.print(f"0 - {i18n.get('image_operations.exit')}")
         self.console.print()
         
         try:
-            choice = IntPrompt.ask("", choices=[str(i) for i in range(10)], default="0")
+            choice = IntPrompt.ask("", choices=[str(i) for i in range(9)], default="0")
             return int(choice)
         except KeyboardInterrupt:
-            return 9
+            return 8
     
     def get_folders(self) -> List[str]:
         """Get folder paths from user input."""

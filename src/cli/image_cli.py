@@ -43,8 +43,6 @@ class ImageCLI:
             elif choice == 6:
                 self.operation_handler.handle_face_detection_delete()
             elif choice == 7:
-                self.operation_handler.handle_face_detection_blur()
-            elif choice == 8:
                 self.settings_handler.handle_priority_settings()
-            elif choice == 9:
+            elif choice == 8:
                 break
