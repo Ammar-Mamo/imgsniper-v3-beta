@@ -71,8 +71,8 @@ class DateExtractor:
             'screenshot': 6,
             'snapchat': 6,
             'whatsapp': 6,
-            'camera': 9,
-            'original': 10,  # Highest importance
+            'camera': 8,
+            'original': 8,
             # Add نمطs for copied/modified ملفات (منخفضer أهمية)
             ' (1)': 2,  # File (1).jpg
             ' (2)': 2,  # File (2).jpg
@@ -208,7 +208,7 @@ class DateExtractor:
     
     def get_filename_importance_score(self, filename: str) -> int:
         """
-        Get an importance score (1-11) based on filename patterns.
+        Get an importance score (1-9) based on filename patterns.
 
         Matching is word-boundary aware: a keyword only matches when it
         appears as a whole token, so 'pic' no longer matches 'epic' or
@@ -237,13 +237,25 @@ class DateExtractor:
         if any(self._pattern_matches(filename_lower, m) for m in copy_markers):
             max_score = min(max_score, 3)
 
-        # Small bonus (+1) for clean names: no numbered copy suffix and not
-        # already flagged as 'original'/'camera' (which keep their exact score)
+        # Small bonus (+1) for clean names: no numbered copy suffix.
+        #
+        # Audit finding P0-8: this used to ALSO skip the bonus when the
+        # filename contained 'original'/'camera', on the theory that those
+        # patterns "keep their exact score". Combined with their outlier
+        # weights (10 and 9, against 7 for every other positive pattern
+        # and 8 for dsc/vid/video) that let the filename criterion alone
+        # outvote every other criterion, so a tiny file merely NAMED
+        # "original.jpg" could beat a 3000x3000 photograph.
+        #
+        # Both outliers are now 8 -- tied with the dsc/vid/video tier
+        # instead of forming a tier of their own -- and the exemption is
+        # gone so the bonus applies uniformly. Removing the exemption is
+        # NOT optional: lowering the weights while keeping it would have
+        # inverted the ordering, because dsc_1234.jpg would score 8+1=9
+        # while original.jpg stayed pinned at 8.
         numbered = [' (' + str(i) + ')' for i in range(1, 10)]
         if not any(p in filename_lower for p in numbered):
-            if not self._pattern_matches(filename_lower, 'original') and \
-               not self._pattern_matches(filename_lower, 'camera'):
-                max_score += 1
+            max_score += 1
 
         return max_score
 
