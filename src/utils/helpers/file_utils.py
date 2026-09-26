@@ -369,6 +369,14 @@ def move_to_recycle_bin(file_path: str, subfolder: str = None):
     Args:
         file_path: Path to the file to move
         subfolder: Optional subfolder within recycle bin (e.g., 'small', 'corrupted')
+
+    Audit P3-8: this function IS the recovery mechanism. ImgSniper never
+    permanently deletes - it moves files here with their folder structure
+    intact, so every removed file stays recoverable. That is exactly why the
+    inert safety.create_backup / safety.preserve_originals settings were
+    REMOVED rather than wired up: both described a guarantee this function
+    already provides unconditionally, and a safety toggle that cannot actually
+    be turned off is a false guarantee rather than a feature.
     """
     source = Path(file_path)
     if not source.exists():

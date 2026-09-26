@@ -547,6 +547,73 @@ P('image_analyzer still scans through get_all_images',
   'get_all_images(' in read_src('src/core/image_analyzer.py'))
 
 # =====================================================================
+SEP('P3-8  inert safety keys removed; recycle-bin IS the recovery path')
+# =====================================================================
+from src.utils.helpers.file_utils import (                          # noqa: E402
+    move_to_recycle_bin, reset_session_folder,
+)
+
+settings_json = json.loads(read_src('config/settings.json'))
+P('settings.json is still valid JSON after the removal',
+  isinstance(settings_json, dict))
+safety_section = settings_json.get('safety', {})
+P('safety.preserve_originals removed', 'preserve_originals' not in safety_section)
+P('safety.create_backup removed', 'create_backup' not in safety_section)
+P('the removal is documented inside settings.json itself',
+  'P3-8' in str(safety_section.get('_note', ''))
+  and 'preserve_originals' in str(safety_section.get('_note', '')))
+remaining_safety = sorted(k for k in safety_section if not k.startswith('_'))
+P('exactly the three functional safety keys remain',
+  remaining_safety == ['confirm_before_delete', 'dry_run_mode',
+                       'max_files_per_operation'], str(remaining_safety))
+
+src_blob = '\n'.join(io.open(f, encoding='utf-8', errors='replace').read()
+                     for f in sorted((ROOT / 'src').rglob('*.py')))
+for key in remaining_safety:
+    P('safety.%s is genuinely read by code (not inert)' % key,
+      ('safety.%s' % key) in src_blob)
+removed_reads = re.findall(
+    r"config\.get\(\s*['\"]safety\.(preserve_originals|create_backup)", src_blob)
+P('no code READS either removed key via config.get()',
+  not removed_reads, str(removed_reads))
+_mentioning = [f.name for f in sorted((ROOT / 'src').rglob('*.py'))
+               if 'preserve_originals' in
+               io.open(f, encoding='utf-8', errors='replace').read()]
+P('the only remaining mention is the explanatory docstring in file_utils.py',
+  _mentioning == ['file_utils.py'], str(_mentioning))
+P('move_to_recycle_bin documents that it IS the recovery mechanism',
+  'this function IS the recovery mechanism'
+  in read_src('src/utils/helpers/file_utils.py'))
+
+# Functional proof of the claim the removed keys used to make: a "deleted"
+# file is never destroyed, it is moved and stays byte-for-byte recoverable.
+bin_root = TEST_DIR / 'binroot'
+(bin_root / 'photos' / 'nested').mkdir(parents=True)
+victim = bin_root / 'photos' / 'nested' / 'dup.jpg'
+victim.write_bytes(b'\xAB' * 4096)
+_victim_bytes = victim.read_bytes()
+_cwd3 = os.getcwd()
+_paths3 = json.loads(json.dumps(config.get('paths', {})))
+_safety3 = json.loads(json.dumps(config.get('safety', {})))
+try:
+    os.chdir(str(bin_root))
+    config.config['paths']['recycle_bin'] = 'recycle-bin'
+    config.config['safety']['dry_run_mode'] = False
+    reset_session_folder()
+    move_to_recycle_bin(str(victim), subfolder='duplicates')
+    recovered = list((bin_root / 'recycle-bin').rglob('dup.jpg'))
+finally:
+    os.chdir(_cwd3)
+    config.config['paths'] = json.loads(json.dumps(_paths3))
+    config.config['safety'] = json.loads(json.dumps(_safety3))
+    reset_session_folder()
+P('the file is gone from its original location', not victim.exists())
+P('the file still exists inside the recycle bin (nothing was destroyed)',
+  len(recovered) == 1, str(recovered))
+P('the moved file is byte-for-byte identical (fully recoverable)',
+  bool(recovered) and recovered[0].read_bytes() == _victim_bytes)
+
+# =====================================================================
 SEP('P2-22  save_config: no-op guard + line-ending preservation')
 # =====================================================================
 from src.core.config import Config                                  # noqa: E402

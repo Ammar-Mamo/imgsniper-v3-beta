@@ -168,10 +168,9 @@
     "safety": {
         "_comment": "إعدادات الأمان",
         "confirm_before_delete": true,
-        "create_backup": true,
         "max_files_per_operation": 10000,
         "dry_run_mode": false,
-        "preserve_originals": true
+        "_note": "create_backup and preserve_originals were REMOVED (audit P3-8). Neither was ever read by any code, yet both implied an active safety mechanism - a false guarantee. They were also redundant by design: ImgSniper NEVER permanently deletes, it MOVES files into paths.recycle_bin preserving their folder structure, so every removed file stays recoverable and the file kept for each group is by definition the preserved original. A safety toggle that cannot actually be turned off was removed rather than wired up."
     },
     "logging": {
         "_comment": "إعدادات السجلات",

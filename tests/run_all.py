@@ -26,7 +26,7 @@ SUITES = [
     ('verify_e2e.py', 'End-to-end scenarios on real images'),
     ('test_fixes_round2.py', 'Round 2 -- safety gate, date criterion, quality floor'),
     ('test_fixes_round3.py', 'Round 3 -- P0-4/P0-8 scoring, P2-13/P2-14 dates, P2-18 language'),
-    ('test_fixes_round4.py', 'Round 4 -- P2-7 scan filters, P2-20 logging, P2-22 save_config'),
+    ('test_fixes_round4.py', 'Round 4 -- P2-7 filters, P2-20 logging, P2-22 config, P3-8 safety'),
 ]
 
 
