@@ -312,7 +312,10 @@ class DateExtractor:
                               date_priority: str = 'oldest') -> int:
         """
         Compare two images by date.
-        Returns: -1 if image1 is better, 1 if image2 is better, 0 if equal
+        Returns: -1 if image1 is better, 1 if image2 is better, 0 if equal.
+        Decided by DATE ONLY -- filename importance is deliberately not
+        consulted here (audit finding P2-14); the selection engine
+        scores that as a separate weighted criterion.
         """
         date1, source1 = self.get_best_date(image1_path, date_priority)
         date2, source2 = self.get_best_date(image2_path, date_priority)
@@ -323,16 +326,14 @@ class DateExtractor:
         elif date2 and not date1:
             return 1
         elif not date1 and not date2:
-            # مقارنة by ملفاسم أهمية
-            score1 = self.get_filename_importance_score(Path(image1_path).name)
-            score2 = self.get_filename_importance_score(Path(image2_path).name)
-            
-            if score1 > score2:
-                return -1
-            elif score2 > score1:
-                return 1
-            else:
-                return 0
+            # Audit finding P2-14: this used to fall back to filename
+            # importance, so a comparison that claims to be BY DATE
+            # silently decided the winner by filename instead. The
+            # selection engine already scores filename as its own
+            # weighted criterion, so doing it here as well double
+            # counted it and polluted the date signal. With no date on
+            # either side they are simply equal by date.
+            return 0
         
         # Both have تاريخs - compare based on أولوية
         if date_priority == 'oldest':
@@ -346,16 +347,11 @@ class DateExtractor:
             elif date1 < date2:
                 return 1
         
-        # Dates are equal - compare by ملفاسم أهمية
-        score1 = self.get_filename_importance_score(Path(image1_path).name)
-        score2 = self.get_filename_importance_score(Path(image2_path).name)
-        
-        if score1 > score2:
-            return -1
-        elif score2 > score1:
-            return 1
-        else:
-            return 0
+        # Dates are equal. Audit finding P2-14: no filename tiebreak here
+        # either, for the same reason as above. Equal dates means equal
+        # by date; any filename preference belongs to the filename
+        # criterion, not to this one.
+        return 0
 
 # Global مثيل
 date_extractor = DateExtractor()
