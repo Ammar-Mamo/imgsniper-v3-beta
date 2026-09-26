@@ -49,10 +49,69 @@ class SimilarityGroupFinder:
     def __init__(self):
         pass
     
+
+    # The hash_size that processing.phash_threshold refers to. Normal mode
+    # uses 8, which is also imagehash's own default.
+    REFERENCE_HASH_SIZE = 8
+
+    @classmethod
+    def _detect_hash_size(cls, image_hashes) -> int:
+        """
+        Read the real hash_size off the hash objects themselves.
+
+        Deriving it from the data keeps this correct without threading a
+        new parameter through every caller, and it cannot drift out of
+        sync with the hash_size the calculator actually used.
+        """
+        for h in image_hashes.values():
+            try:
+                size = int(h.hash.shape[0])
+                if size > 0:
+                    return size
+            except (AttributeError, IndexError, TypeError, ValueError):
+                pass
+            break
+        return cls.REFERENCE_HASH_SIZE
+
+    @classmethod
+    def _scale_threshold(cls, base_threshold: int, hash_size: int) -> int:
+        """
+        Rescale a reference-size threshold so its ratio is mode independent.
+
+        5 at hash_size 8 -> 5 / 8 / 11 / 20 for hash sizes 8 / 10 / 12 / 16,
+        i.e. a constant ~92% similarity in every scan mode.
+        """
+        ref = cls.REFERENCE_HASH_SIZE
+        if hash_size <= 0 or hash_size == ref:
+            return base_threshold
+        scaled = base_threshold * (hash_size * hash_size) / float(ref * ref)
+        return max(1, int(round(scaled)))
+
+    def _resolve_threshold(self, image_hashes) -> int:
+        """Turn processing.phash_threshold into the effective Hamming distance."""
+        threshold_config = config.get('processing.phash_threshold', 5)
+        try:
+            base = int(threshold_config)
+        except (TypeError, ValueError):
+            base = 5
+        base = max(1, base)
+        return self._scale_threshold(base, self._detect_hash_size(image_hashes))
     def find_similar_groups(self, image_hashes: Dict[str, imagehash.ImageHash], console: Optional[Console] = None) -> List[List[str]]:
         """Find groups of similar images based on hash distance with optimized parallel algorithm."""
-        threshold_config = config.get('processing.phash_threshold', 5)
-        threshold = int(threshold_config) if isinstance(threshold_config, (int, str)) else 5
+        # Audit finding P0-4: the configured threshold is a raw Hamming
+        # distance, but its MEANING depends on hash_size, which varies by
+        # scan mode (Normal=8, Medium=10, Advanced=12, Ultra=16). The
+        # maximum possible distance is hash_size**2, so a fixed 5 meant
+        # 92.2% similarity in Normal mode but 98.0% in Ultra mode:
+        # raising the scan precision silently made matching far stricter
+        # and returned FEWER groups, the opposite of what a user expects
+        # when they select a more thorough mode.
+        #
+        # The configured value is therefore read as the distance at the
+        # REFERENCE hash size (8 = Normal mode, also imagehash's own
+        # default) and rescaled so the similarity ratio is identical in
+        # every mode. Normal mode behaviour is unchanged.
+        threshold = self._resolve_threshold(image_hashes)
         
         # تحويل to قائمة for faster iteنسبةn and ensure consistent أمرing
         hash_items = sorted(list(image_hashes.items()), key=lambda x: x[0])  # ترتيب by مسار for consistency
