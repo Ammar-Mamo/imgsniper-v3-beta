@@ -136,6 +136,15 @@ def setup_logging(settings=None, force=False):
     if _configured and not force:
         return _log_file_path is not None
 
+    # Audit round 5: recovered-file libraries contain JPEGs with truncated
+    # EXIF blocks; PIL emits a benign UserWarning ("Corrupt EXIF data ...")
+    # on EVERY read of such a file while continuing with the partial tags.
+    # On large scans these flood stderr and interrupt the Rich progress UI.
+    # Route warnings.warn output into the logging system instead: with the
+    # file-only handler below, the messages are preserved in imgsniper.log
+    # and the console stays clean. captureWarnings() is idempotent.
+    logging.captureWarnings(True)
+
     # ---- resolve the settings section -------------------------------------
     if settings is None:
         settings = {}

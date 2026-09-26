@@ -18,11 +18,11 @@ from ...utils.helpers.scan_modes import scan_mode_manager
 
 
 def _calculate_perceptual_hash_worker(img_path: str, hash_size: int = 8) -> tuple:
-    """Worker function for calculating perceptual hash."""
+    """Worker function for calculating perceptual hashes (pHash + dHash)."""
     try:
         # Quick ملف حجم check to skip empty ملفات
         if Path(img_path).stat().st_size == 0:
-            return img_path, None
+            return img_path, None, None
             
         with Image.open(img_path) as img:
             # Skip conإصدار if alجاهز RGB or grayمقياس for سرعة
@@ -31,9 +31,18 @@ def _calculate_perceptual_hash_worker(img_path: str, hash_size: int = 8) -> tupl
             
             # Use optimized pHash
             phash = imagehash.phash(img, hash_size=hash_size)
-            return img_path, phash
+            # Secondary hash (audit round 5, issue #1126): dHash encodes
+            # LOCAL gradient structure, so it stays sensitive to exactly the
+            # detail pHash averages away -- e.g. different message text
+            # inside identical WhatsApp/UI screenshot templates, which phash8
+            # scores at distance 0-8 and used to group as "similar".
+            # Grouping now requires BOTH distances within the threshold;
+            # dHash is as robust as pHash against resize/compression, so
+            # genuine duplicates still pass both.
+            dhash = imagehash.dhash(img, hash_size=hash_size)
+            return img_path, phash, dhash
     except Exception:
-        return img_path, None
+        return img_path, None, None
 
 
 class SimilarityHashCalculator:
@@ -53,8 +62,24 @@ class SimilarityHashCalculator:
         return ThreadPoolExecutor
     
     def calculate_image_hashes(self, all_images: List[str], console: Console) -> Dict[str, Any]:
-        """Calculate perceptual hashes for all images."""
+        """Calculate perceptual hashes (pHash) for all images.
+
+        Backwards-compatible wrapper around calculate_image_hashes_dual().
+        """
+        phashes, _dhashes = self.calculate_image_hashes_dual(all_images, console)
+        return phashes
+
+    def calculate_image_hashes_dual(self, all_images: List[str], console: Console):
+        """Calculate pHash AND dHash for all images.
+
+        Returns (phash_dict, dhash_dict). The dHash dict feeds the secondary
+        guard in SimilarityGroupFinder: a pair only counts as "similar" when
+        BOTH Hamming distances are within the threshold, which stops
+        identical UI/screenshot templates with different content from being
+        grouped (audit round 5, issue #1126).
+        """
         image_hashes = {}
+        image_dhashes = {}
         
         with Progress(
             SpinnerColumn(),
@@ -94,9 +119,11 @@ class SimilarityHashCalculator:
                     for future in as_completed(future_to_file):
                         img_path = future_to_file[future]
                         try:
-                            result_path, img_hash = future.result()
+                            result_path, img_hash, img_dhash = future.result()
                             if img_hash is not None:
                                 image_hashes[result_path] = img_hash
+                            if img_dhash is not None:
+                                image_dhashes[result_path] = img_dhash
                         except Exception:
                             pass  # Skip ملفات that can't be عمليةed
                         
@@ -106,9 +133,11 @@ class SimilarityHashCalculator:
                 console.print(f"[yellow]⚠️ Falling back to single-threaded processing: {e}[/yellow]")
                 for img_path in all_images:
                     try:
-                        result_path, img_hash = _calculate_perceptual_hash_worker(img_path, hash_size)
+                        result_path, img_hash, img_dhash = _calculate_perceptual_hash_worker(img_path, hash_size)
                         if img_hash is not None:
                             image_hashes[result_path] = img_hash
+                        if img_dhash is not None:
+                            image_dhashes[result_path] = img_dhash
                     except Exception as e:
                         # Audit P2-20: was a silent "pass". An image whose
                         # perceptual hash cannot be computed never enters
@@ -117,7 +146,7 @@ class SimilarityHashCalculator:
                         logging.debug('Perceptual hash failed for %s: %s', img_path, e)
                     progress.advance(task)
         
-        return image_hashes
+        return image_hashes, image_dhashes
     
     def calculate_real_similarities(self, similar_groups: List[List[str]], image_hashes: Dict[str, Any]) -> Dict[str, Dict[str, float]]:
         """Calculate real visual similarity percentages between images in each group."""

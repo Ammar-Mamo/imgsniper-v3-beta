@@ -11,6 +11,7 @@ from PIL import Image
 
 from ...utils.helpers.date_extractor import date_extractor
 from ...core.config import config
+from ...core.i18n.i18n import i18n
 
 
 class ImageInfoExtractor:
@@ -57,6 +58,17 @@ class ImageInfoExtractor:
             )
             filename_importance = date_extractor.get_filename_importance_score(path.name)
             
+            # Audit round 5 (issue #14/#239): a date extracted from the
+            # FILENAME is built as datetime(y, m, d) -- always midnight.
+            # Printed bare, it made a same-day EXIF timestamp look "newer"
+            # and produced misleading "older extracted date" reasons, so
+            # day-level precision is flagged here and annotated in reports.
+            date_only = bool(
+                extracted_date
+                and date_source == 'filename'
+                and (extracted_date.hour, extracted_date.minute, extracted_date.second) == (0, 0, 0)
+            )
+            
             return {
                 "name": path.name,
                 "size_bytes": file_size,
@@ -68,9 +80,31 @@ class ImageInfoExtractor:
                 "mode": mode,
                 "extracted_date": extracted_date.strftime('%Y-%m-%d %H:%M:%S') if extracted_date else "Unknown",
                 "date_source": date_source,
+                "date_only": date_only,
                 "filename_importance": filename_importance,
                 "modified_time": datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S'),
                 "created_time": datetime.fromtimestamp(stat.st_ctime).strftime('%Y-%m-%d %H:%M:%S')
             }
         except Exception as e:
             return {"error": str(e)}
+
+
+def format_extracted_date(info: Dict[str, Any]) -> str:
+    """Render extracted_date, annotating filename dates that carry no time.
+
+    A filename like "IMG_20220720.jpg" yields a date built as
+    datetime(2022, 7, 20) -- midnight is an artifact of day-level precision,
+    NOT a real capture time. The annotation stops readers from comparing it
+    against real EXIF timestamps of the same day (audit round 5, #14/#239).
+    """
+    value = info.get('extracted_date', 'Unknown')
+    if info.get('date_only'):
+        suffix = None
+        try:
+            suffix = i18n.get('reports.date_only_suffix')
+        except Exception:
+            suffix = None
+        if not suffix or str(suffix).startswith('[Missing'):
+            suffix = ' (date only - no time in filename)'
+        value = f"{value}{suffix}"
+    return value

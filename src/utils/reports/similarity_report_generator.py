@@ -11,7 +11,7 @@ from typing import List, Dict, Any
 from ...core.i18n.i18n import i18n
 from ...utils.helpers.system_monitor import system_monitor
 from .report_formatter import ReportFormatter
-from .image_info_extractor import ImageInfoExtractor
+from .image_info_extractor import ImageInfoExtractor, format_extracted_date
 
 
 class SimilarityReportGenerator:
@@ -62,7 +62,7 @@ class SimilarityReportGenerator:
                             f.write(f"  📄 {kept_info['name']}\n")
                             f.write(f"  💾 Size: {kept_info['size_mb']} MB\n")
                             f.write(f"  📐 Dimensions: {kept_info['width']}x{kept_info['height']}\n")
-                            f.write(f"  📅 Date Extracted: {kept_info['extracted_date']}\n")
+                            f.write(f"  📅 Date Extracted: {format_extracted_date(kept_info)}\n")
                             f.write(f"  🧭 Date Source:    {kept_info.get('date_source', 'n/a')}\n")
                             f.write(f"  🔢 Filename Importance: {kept_info['filename_importance']}/9\n")
                             f.write(f"  🕒 Modified: {kept_info['modified_time']}\n")
@@ -87,12 +87,12 @@ class SimilarityReportGenerator:
                                 # Fجميعback for ملفات that can't be read
                                 f.write(f"  📄 {Path(file_path).name}\n")
                                 f.write(f"  ❌ Error reading file: {deleted_info['error']}\n")
-                                f.write(f"  📌 {i18n.get('reports.reason_recovered_image')}\n")
+                                f.write(f"  📌 {self.formatter.get_text('reason_undetermined')}\n")
                             else:
                                 f.write(f"  📄 {deleted_info['name']}\n")
                                 f.write(f"  💾 Size: {deleted_info['size_mb']} MB\n")
                                 f.write(f"  📐 Dimensions: {deleted_info['width']}x{deleted_info['height']}\n")
-                                f.write(f"  📅 Date Extracted: {deleted_info['extracted_date']}\n")
+                                f.write(f"  📅 Date Extracted: {format_extracted_date(deleted_info)}\n")
                                 f.write(f"  🧭 Date Source:    {deleted_info.get('date_source', 'n/a')}\n")
                                 f.write(f"  🔢 Filename Importance: {deleted_info['filename_importance']}/9\n")
                                 f.write(f"  🕒 Modified: {deleted_info['modified_time']}\n")
@@ -153,7 +153,7 @@ class SimilarityReportGenerator:
                             f.write(f"  📄 {kept_info['name']}\n")
                             f.write(f"  💾 Size: {kept_info['size_mb']} MB\n")
                             f.write(f"  📐 Dimensions: {kept_info['width']}x{kept_info['height']}\n")
-                            f.write(f"  📅 Date Extracted: {kept_info['extracted_date']}\n")
+                            f.write(f"  📅 Date Extracted: {format_extracted_date(kept_info)}\n")
                             f.write(f"  🧭 Date Source:    {kept_info.get('date_source', 'n/a')}\n")
                             f.write(f"  🔢 Filename Importance: {kept_info['filename_importance']}/9\n")
                             f.write(f"  🕒 Modified: {kept_info['modified_time']}\n")
@@ -173,12 +173,12 @@ class SimilarityReportGenerator:
                                 # Fجميعback for ملفات that can't be read
                                 f.write(f"  📄 {Path(file_path).name}\n")
                                 f.write(f"  ❌ Error reading file: {deleted_info['error']}\n")
-                                f.write(f"  📌 {i18n.get('reports.reason_recovered_image')}\n")
+                                f.write(f"  📌 {self.formatter.get_text('reason_undetermined')}\n")
                             else:
                                 f.write(f"  📄 {deleted_info['name']}\n")
                                 f.write(f"  💾 Size: {deleted_info['size_mb']} MB\n")
                                 f.write(f"  📐 Dimensions: {deleted_info['width']}x{deleted_info['height']}\n")
-                                f.write(f"  📅 Date Extracted: {deleted_info['extracted_date']}\n")
+                                f.write(f"  📅 Date Extracted: {format_extracted_date(deleted_info)}\n")
                                 f.write(f"  🧭 Date Source:    {deleted_info.get('date_source', 'n/a')}\n")
                                 f.write(f"  🔢 Filename Importance: {deleted_info['filename_importance']}/9\n")
                                 f.write(f"  🕒 Modified: {deleted_info['modified_time']}\n")

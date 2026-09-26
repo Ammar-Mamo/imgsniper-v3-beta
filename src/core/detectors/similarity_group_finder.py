@@ -17,21 +17,35 @@ from ...utils.helpers.scan_modes import scan_mode_manager
 
 
 def _compare_hash_batch_worker(args: tuple) -> List[tuple]:
-    """Worker function for comparing hash batches in parallel."""
+    """Worker function for comparing hash batches in parallel.
+
+    Items are (path, phash) or (path, phash, dhash) tuples; when the
+    secondary dHash is present, BOTH Hamming distances must be within the
+    threshold before a pair counts as similar (audit round 5, issue #1126).
+    """
     batch_items, all_items, threshold, start_idx = args
     matches = []
     
     # معالجة batch عنصرs efficiently
-    for i, (img1, hash1) in enumerate(batch_items):
+    for i, item1 in enumerate(batch_items):
+        img1, hash1 = item1[0], item1[1]
+        sec1 = item1[2] if len(item1) > 2 else None
         actual_idx = start_idx + i
         # Only check عنصرs that come after this واحد in the مملوء قائمة
         for j in range(actual_idx + 1, len(all_items)):
-            img2, hash2 = all_items[j]
+            item2 = all_items[j]
+            img2, hash2 = item2[0], item2[1]
+            sec2 = item2[2] if len(item2) > 2 else None
             try:
                 # Fast hash comparison - this is CPU intensive and will utilize عمليةor
                 hash_diff = hash1 - hash2
                 if hash_diff <= threshold:
-                    matches.append((img1, img2))
+                    # Secondary-hash guard (audit round 5, issue #1126):
+                    # the dHash distance must agree as well -- pHash alone
+                    # groups identical UI/screenshot templates whose text
+                    # differs (distance 0-8), dHash separates them.
+                    if sec1 is None or sec2 is None or (sec1 - sec2) <= threshold:
+                        matches.append((img1, img2))
                     
                 # Early إنهاء تحسين for very different hashes
                 if hash_diff > threshold * 3:
@@ -96,8 +110,35 @@ class SimilarityGroupFinder:
             base = 5
         base = max(1, base)
         return self._scale_threshold(base, self._detect_hash_size(image_hashes))
-    def find_similar_groups(self, image_hashes: Dict[str, imagehash.ImageHash], console: Optional[Console] = None) -> List[List[str]]:
-        """Find groups of similar images based on hash distance with optimized parallel algorithm."""
+
+    @staticmethod
+    def _pair_matches(item1: tuple, item2: tuple, threshold: int) -> bool:
+        """True when BOTH the primary and (optional) secondary hash agree.
+
+        Items are (path, phash) or (path, phash, dhash). The secondary dHash
+        guard (audit round 5, issue #1126) stops identical UI/screenshot
+        templates with different content from being grouped. 2-tuple items
+        (old callers/tests) keep the original single-hash behaviour.
+        """
+        try:
+            if item1[1] - item2[1] > threshold:
+                return False
+            if len(item1) > 2 and len(item2) > 2:
+                if item1[2] - item2[2] > threshold:
+                    return False
+            return True
+        except Exception:
+            return False
+    def find_similar_groups(self, image_hashes: Dict[str, imagehash.ImageHash], console: Optional[Console] = None, secondary_hashes: Optional[Dict[str, imagehash.ImageHash]] = None) -> List[List[str]]:
+        """Find groups of similar images based on hash distance with optimized parallel algorithm.
+
+        When `secondary_hashes` (dHash, same hash_size) is provided, a pair
+        only matches when BOTH Hamming distances are within the threshold
+        (audit round 5, issue #1126 -- identical WhatsApp/UI screenshot
+        templates with different content). Files missing a secondary hash
+        are excluded from grouping: the conservative direction, since they
+        can never be deleted as "similar" without full verification.
+        """
         # Audit finding P0-4: the configured threshold is a raw Hamming
         # distance, but its MEANING depends on hash_size, which varies by
         # scan mode (Normal=8, Medium=10, Advanced=12, Ultra=16). The
@@ -114,7 +155,18 @@ class SimilarityGroupFinder:
         threshold = self._resolve_threshold(image_hashes)
         
         # تحويل to قائمة for faster iteنسبةn and ensure consistent أمرing
-        hash_items = sorted(list(image_hashes.items()), key=lambda x: x[0])  # ترتيب by مسار for consistency
+        if secondary_hashes:
+            # Only files with BOTH hashes participate: a file whose dHash
+            # could not be computed cannot pass the secondary guard, and
+            # excluding it is the conservative direction (it can then never
+            # be deleted as "similar" without full verification).
+            hash_items = sorted(
+                [(p, h, secondary_hashes[p]) for p, h in image_hashes.items()
+                 if h is not None and secondary_hashes.get(p) is not None],
+                key=lambda x: x[0]
+            )
+        else:
+            hash_items = sorted(list(image_hashes.items()), key=lambda x: x[0])  # ترتيب by مسار for consistency
         total_items = len(hash_items)
         
         if total_items < 2:
@@ -311,26 +363,18 @@ class SimilarityGroupFinder:
             ) as progress:
                 task = progress.add_task(i18n.get('common.comparing_images'), total=total_items)
 
-                for i, (img1, hash1) in enumerate(hash_items):
+                for i, item1 in enumerate(hash_items):
                     # Compare against all remaining items to collect every match
                     for j in range(i + 1, total_items):
-                        img2, hash2 = hash_items[j]
-                        try:
-                            if hash1 - hash2 <= threshold:
-                                all_matches.append((img1, img2))
-                        except Exception:
-                            continue  # Skip invalid hash comparisons
+                        if self._pair_matches(item1, hash_items[j], threshold):
+                            all_matches.append((item1[0], hash_items[j][0]))
                     progress.advance(task)
         else:
             # Fallback without progress bar
-            for i, (img1, hash1) in enumerate(hash_items):
+            for i, item1 in enumerate(hash_items):
                 for j in range(i + 1, total_items):
-                    img2, hash2 = hash_items[j]
-                    try:
-                        if hash1 - hash2 <= threshold:
-                            all_matches.append((img1, img2))
-                    except Exception:
-                        continue  # Skip invalid hash comparisons
+                    if self._pair_matches(item1, hash_items[j], threshold):
+                        all_matches.append((item1[0], hash_items[j][0]))
 
         # Use the SAME Union-Find grouping as the parallel path for consistency
         return self._build_groups_from_matches(all_matches, hash_items)
@@ -338,7 +382,7 @@ class SimilarityGroupFinder:
     def _build_groups_from_matches(self, matches: List[tuple], hash_items: List[tuple]) -> List[List[str]]:
         """Build similarity groups from matches using Union-Find algorithm."""
         # إنشاء a خريطةping from صورة مسار to فهرس
-        path_to_idx = {path: i for i, (path, _) in enumerate(hash_items)}
+        path_to_idx = {item[0]: i for i, item in enumerate(hash_items)}
         
         # Union-Find بيانات هيكل
         parent = list(range(len(hash_items)))
@@ -360,11 +404,11 @@ class SimilarityGroupFinder:
         
         # Group صورةs by their root parent
         groups = {}
-        for i, (path, _) in enumerate(hash_items):
+        for i, item in enumerate(hash_items):
             root = find(i)
             if root not in groups:
                 groups[root] = []
-            groups[root].append(path)
+            groups[root].append(item[0])
         
         # Return only groups with more than واحد صورة
         return [group for group in groups.values() if len(group) > 1]

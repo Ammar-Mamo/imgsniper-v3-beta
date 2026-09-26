@@ -60,10 +60,16 @@ class SimilarityDetector:
             return None
         
         # حساب perceptual hashes
-        image_hashes = self.hash_calculator.calculate_image_hashes(all_images, console)
+        # pHash + dHash (audit round 5): the dHash dict feeds the secondary
+        # guard in the group finder -- both distances must be within the
+        # threshold, which stops identical UI/screenshot templates with
+        # different content (WhatsApp chats etc.) from grouping as similar.
+        image_hashes, secondary_hashes = self.hash_calculator.calculate_image_hashes_dual(all_images, console)
         
         # البحث عن similar صورةs
-        similar_groups = self.group_finder.find_similar_groups(image_hashes, console)
+        similar_groups = self.group_finder.find_similar_groups(
+            image_hashes, console, secondary_hashes=secondary_hashes
+        )
         
         # حساب إجمالي similar صورةs (excluding the واحد to keep from كل group)
         total_similar_images = sum(len(group) - 1 for group in similar_groups)

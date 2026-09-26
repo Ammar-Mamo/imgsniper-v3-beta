@@ -12,6 +12,25 @@ from .config import config, DEFAULT_PRIORITY_ORDER
 from ..utils.helpers.date_extractor import date_extractor
 
 
+def compute_size_score(size_mb: float) -> float:
+    """Public 0-10 size score -- the SAME scale FileSelector scores with.
+
+    Reports need it to tell a DECISIVE size difference from a score-neutral
+    one: at/above the 5 MB cap every file scores exactly 10.0, so a raw
+    byte gap there (7.76 vs 7.77 MB) never decided anything and must not be
+    reported as the deletion reason (audit round 5, issue #7).
+    """
+    return min(10.0, max(0.1, size_mb / 0.5))
+
+
+def compute_resolution_score(pixels: int) -> float:
+    """Public 0-10 resolution score -- the SAME scale FileSelector scores with.
+
+    Mirrors the 10 MP cap: differences above it are score-neutral.
+    """
+    return min(10.0, max(0.1, pixels / 1_000_000))
+
+
 class FileSelector:
     """Handles selection of the best file from a group based on various criteria."""
 
@@ -252,8 +271,7 @@ class FileSelector:
             with Image.open(file_path) as img:
                 pixels = img.width * img.height
                 # Scale: 10MP = 10.0, 1MP = 1.0, 100×100 = 0.1
-                score = max(0.1, pixels / 1_000_000)
-                return min(10.0, score)
+                return compute_resolution_score(pixels)
         except Exception:
             return 0.5  # Unknown resolution gets mid-low score
 
@@ -266,8 +284,8 @@ class FileSelector:
         try:
             size_bytes = Path(file_path).stat().st_size
             size_mb = size_bytes / (1024 * 1024)
-            score = max(0.1, size_mb / 0.5)  # 0.5MB = 1.0, 5MB = 10.0
-            return min(10.0, score)
+            # 0.5MB = 1.0, 5MB = 10.0 (capped) -- shared with the reports
+            return compute_size_score(size_mb)
         except Exception:
             return 0.5
 
