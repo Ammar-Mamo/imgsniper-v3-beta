@@ -27,11 +27,57 @@ for _stream in (sys.stdout, sys.stderr):
 # every setup_logging() call below (and keeps suite records out of the temp
 # log files whose contents are being asserted on).
 _FMT = logging.Formatter('%(asctime)s [%(levelname)-8s] %(name)s: %(message)s')
+
+
+class _ResilientFileHandler(logging.Handler):
+    """
+    A file handler that survives setup_logging() closing every handler.
+
+    logging.config.dictConfig() calls _clearExistingHandlers(), which runs
+    logging.shutdown() and CLOSES every registered handler - including this
+    suite's own log file. A plain FileHandler therefore silently stopped
+    writing from the first setup_logging() call onwards, leaving
+    test_run_round4.log truncated at exactly the point where the interesting
+    output begins. That matters because run_all.py tells the user to inspect
+    these logs when a suite fails. Reopening on demand keeps the log complete.
+
+    (The console StreamHandler needs no such guard: StreamHandler.close() does
+    not close the underlying stream, so stdout output was never affected.)
+    """
+
+    def __init__(self, path, formatter):
+        super().__init__()
+        self._path = path
+        self.setFormatter(formatter)
+        io.open(path, 'w', encoding='utf-8').close()   # truncate once, up front
+        self._stream = None
+
+    def _ensure_stream(self):
+        if self._stream is None or self._stream.closed:
+            self._stream = io.open(self._path, 'a', encoding='utf-8')
+        return self._stream
+
+    def emit(self, record):
+        try:
+            stream = self._ensure_stream()
+            stream.write(self.format(record) + '\n')
+            stream.flush()
+        except Exception:
+            self.handleError(record)
+
+    def close(self):
+        try:
+            if self._stream is not None and not self._stream.closed:
+                self._stream.close()
+        except Exception:
+            pass
+        super().close()
+
+
 log = logging.getLogger('FIX4')
 log.setLevel(logging.INFO)
 log.propagate = False
-_file_out = logging.FileHandler(LOG_FILE, encoding='utf-8', mode='w')
-_file_out.setFormatter(_FMT)
+_file_out = _ResilientFileHandler(LOG_FILE, _FMT)
 _stream_out = logging.StreamHandler(sys.stdout)
 _stream_out.setFormatter(_FMT)
 log.addHandler(_file_out)

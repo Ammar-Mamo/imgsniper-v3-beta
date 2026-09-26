@@ -140,11 +140,18 @@ dmypy.json
 .DS_Store
 Thumbs.db
 
-# IDE
+# IDE / editor / assistant tooling
 .vscode/
 .idea/
+.zencoder/
 *.swp
 *.swo
+
+# Windows Explorer per-folder metadata (the counterpart of Thumbs.db)
+desktop.ini
+
+# Lint cache created by ruff
+.ruff_cache/
 
 # Test files
 test_images/

@@ -1,0 +1,51 @@
+# =============================================================================
+# ImgSniper v3 -- project metadata and tool configuration.
+#
+# NOTE: this file is metadata + tooling configuration only. ImgSniper is a
+# script application that runs in place (`python main.py`); it is deliberately
+# NOT built or pip-installed as a distribution, so there is no [build-system]
+# table. Runtime dependencies are installed from requirements.txt.
+# =============================================================================
+
+[project]
+name = "imgsniper"
+version = "3.0.0-beta"
+description = "Batch duplicate / similar / corrupted / small image finder that MOVES files into a recycle bin instead of deleting them."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+keywords = ["images", "duplicates", "perceptual-hash", "cleanup", "cli"]
+
+# Kept in sync with requirements.txt, which remains the authoritative install
+# source (install_requirements.bat reads it).
+dependencies = [
+    "Pillow>=10.0.0,<12.0.0",
+    "imagehash>=4.3.0,<4.4.0",
+    "numpy>=1.24.0,<2.0.0",
+    "psutil>=5.9.0,<6.0.0",
+    "rich>=13.0.0,<15.0.0",
+]
+
+[project.optional-dependencies]
+dev = ["ruff>=0.1.0,<1.0.0"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+# These are ImgSniper's own output directories: data, not code.
+extend-exclude = ["recycle-bin", "reports"]
+
+[tool.ruff.lint]
+# CI gates on the CRITICAL set only -- genuine defects rather than taste:
+#   E9    syntax and indentation errors
+#   F63   invalid comparisons / duplicate dict keys
+#   F7    misuse of break / continue / return
+#   F82   undefined names, the most dangerous class of latent bug
+# This exact set is verified green across src/, main.py, tests/ and scripts/.
+#
+# The full rule set reports several hundred PRE-EXISTING style findings in this
+# codebase (annotation modernisation, import sorting, blind except, ...). Making
+# those blocking would either force a large refactor or drown the gate in noise,
+# so they are left for incremental cleanup. To see them:
+#   python -m ruff check --select ALL src main.py tests
+select = ["E9", "F63", "F7", "F82"]

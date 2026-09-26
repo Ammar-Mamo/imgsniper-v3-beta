@@ -1,0 +1,71 @@
+name: CI
+
+# The gate is deliberately small and honest: byte-compile everything, run the
+# critical lint rule set, then run the full test suite. tests/run_all.py exits
+# non-zero on any failure, so it works as a gate on its own.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  verify:
+    name: py${{ matrix.python-version }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      # Let every combination finish so a platform-specific failure is visible
+      # instead of being masked by fail-fast cancelling the others.
+      fail-fast: false
+      matrix:
+        # Windows is the primary target (cp1256 consoles, FILE_ATTRIBUTE_*
+        # handling); Linux is kept honest because the codebase claims
+        # cross-platform behaviour. Windows-only test branches are guarded by
+        # sys.platform == 'win32' and skip cleanly elsewhere.
+        os: [windows-latest, ubuntu-latest]
+        python-version: ["3.10", "3.11"]
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install runtime dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Install developer dependencies
+        run: python -m pip install ruff
+
+      - name: Byte-compile every source file
+        run: python -m compileall -q src main.py tests scripts
+
+      - name: Lint (critical rule set from pyproject.toml)
+        run: python -m ruff check src main.py tests scripts
+
+      - name: Run the full test suite
+        run: python tests/run_all.py
+
+      # run_all.py prints which per-suite log to read, but on CI those files
+      # only exist inside the runner - so publish them when a job fails.
+      - name: Upload per-suite logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs-${{ matrix.os }}-py${{ matrix.python-version }}
+          path: |
+            test_run.log
+            verify_e2e.log
+            test_run_round2.log
+            test_run_round3.log
+            test_run_round4.log
+          if-no-files-found: ignore
+          retention-days: 14

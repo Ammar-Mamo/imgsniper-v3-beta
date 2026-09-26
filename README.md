@@ -1,0 +1,327 @@
+# 🖼️ ImgSniper v3 (beta)
+
+Batch image-cleanup tool for very large photo libraries. It finds duplicate,
+visually similar, corrupted and undersized images, shows you exactly why each
+decision was made, and **moves** the losers into a recycle bin instead of
+deleting them.
+
+> **نسخة تجريبية / beta.** See [Known limitations](#known-limitations) before
+> pointing it at an irreplaceable library.
+
+---
+
+## Table of contents
+
+- [What it does](#what-it-does)
+- [The safety model — read this first](#the-safety-model--read-this-first)
+- [Requirements](#requirements)
+- [Install](#install)
+- [Run](#run)
+- [Configuration](#configuration)
+- [Tests](#tests)
+- [Lint](#lint)
+- [Project layout](#project-layout)
+- [Known limitations](#known-limitations)
+- [License](#license)
+
+---
+
+## What it does
+
+| Operation | How it decides |
+|---|---|
+| **Duplicate detection** | Exact byte-level matching via a cryptographic file hash — only bit-identical files are grouped. |
+| **Similar-image detection** | Perceptual hashing (`imagehash`). Four scan modes trade speed for accuracy: `normal` (hash size 8), `medium` (10), `advanced` (12), `ultra` (16). The similarity threshold scales with the hash size so "similar" means the same thing in every mode. |
+| **Corrupted-image detection** | Attempts a real decode and flags files that fail. |
+| **Small-image detection** | Flags images below a resolution threshold (default 300×300). |
+| **Reports** | A text report per operation, listing every group, the image kept, the images removed, and a human-readable **reason** for each decision. |
+
+The CLI is available in **English** and **Arabic** (`language` in
+`config/settings.json`, default `en`).
+
+### How the "best" image is chosen
+
+For each group of similar images, four criteria are scored and combined:
+
+1. **Resolution** — higher pixel count wins.
+2. **File size** — larger file wins (more detail, less compression).
+3. **Date** — EXIF capture date merged with dates embedded in the filename;
+   `priorities.date_priority` selects `oldest` or `newest`. Each report line
+   shows `Date Source: exif | filename | none` so you can see which one was
+   used.
+4. **Filename** — names like `copy`, `(1)` or `Recovered_*` are penalised;
+   clean camera names score higher.
+
+Two guards prevent the classic failure mode of "kept a thumbnail, deleted the
+real photo":
+
+- **Quality floor** — when a group spans an extreme resolution range,
+  resolution receives extra (but capped) weight, so a tiny image cannot win on
+  date or filename alone.
+- **Resolution-sacrifice warning** — if the kept image has *fewer* pixels than
+  another image in the group, the report says so explicitly.
+
+---
+
+## The safety model — read this first
+
+**ImgSniper never permanently deletes anything.** Every removed file is
+**moved** into `recycle-bin/`, preserving its original folder structure, so it
+can be put back by hand at any time.
+
+| Setting | Effect |
+|---|---|
+| `safety.confirm_before_delete` | Asks for an explicit `y` before anything is moved. |
+| `safety.dry_run_mode` | Announces what *would* be moved and touches nothing at all — not even empty recycle-bin folders. |
+| `safety.max_files_per_operation` | Hard cap on how many files one operation may move. |
+
+Additional guarantees that are always on:
+
+- ImgSniper's own output directories (`recycle-bin/`, `reports/`, `temp/`,
+  `cache/`) are **never scanned**, so files you already removed cannot come
+  back into a later run.
+- Every removed file is recoverable byte-for-byte from the recycle bin.
+- Unexpected failures (unreadable EXIF, unhashable files, failed comparison
+  batches) are written to `imgsniper.log` rather than swallowed.
+
+> **Recommended first run:** set `safety.dry_run_mode` to `true`, run a scan,
+> read the report, and only then switch it back to `false`.
+
+---
+
+## Requirements
+
+- **Python 3.10 or newer** (developed and tested on 3.10.11)
+- Windows or Linux. Windows consoles with a limited code page (cp1256/cp1252)
+  are handled explicitly: emoji and Arabic output can never abort a file
+  operation, and the log file is always UTF-8.
+
+Only **five** third-party packages are used at runtime:
+
+| Package | Purpose |
+|---|---|
+| `Pillow` | Image decoding and EXIF reading |
+| `imagehash` | Perceptual hashing |
+| `numpy` | Hash comparison |
+| `psutil` | Memory/CPU-aware worker sizing |
+| `rich` | Menus, panels, progress bars, prompts |
+
+---
+
+## Install
+
+**Windows**
+
+```bat
+install_requirements.bat
+```
+
+**Anywhere**
+
+```bash
+python -m pip install -r requirements.txt
+```
+
+Optional developer tooling:
+
+```bash
+python -m pip install ruff
+```
+
+---
+
+## Run
+
+```bash
+python main.py
+```
+
+or, on Windows:
+
+```bat
+scripts\run.bat
+```
+
+The CLI is interactive: pick an operation, pick one or more folders to scan,
+review the summary, then confirm.
+
+Reports are written to `reports/`. Removed files are moved to `recycle-bin/`.
+Runtime messages are written to `imgsniper.log` (rotating, 10 MB × 5 files by
+default). All three directories are git-ignored.
+
+---
+
+## Configuration
+
+Everything lives in **`config/settings.json`**. Writes are atomic (temp file →
+`fsync` → `os.replace`), and a save whose content is unchanged does not touch
+the file at all.
+
+### Sections that are actually read by the code
+
+| Section | Controls |
+|---|---|
+| `language` | `en` or `ar` |
+| `priorities` | The four selection criteria, their toggles, and `order` — the rank of each criterion, `[1, 2, 3, 4]` = resolution → size → date → filename |
+| `processing` | `scan_mode`, `phash_threshold`, `batch_size`, `max_workers`, `memory_limit_mb`, caching and parallelism |
+| `paths` | `recycle_bin`, `reports`, `temp`, `cache` — all four are excluded from scanning |
+| `similarity` | Similarity grouping settings |
+| `filters` | `exclude_patterns`, `include_hidden`, `include_system`, `min_file_size_bytes`, `max_file_size_mb`. Any numeric filter set to `0` is **disabled**, so a scan can always be widened without a code change |
+| `safety` | `confirm_before_delete`, `dry_run_mode`, `max_files_per_operation` |
+| `logging` | `level`, `file`, `max_size_mb`, `backup_count`, `format` |
+
+Note on `filters.min_resolution` / `max_resolution`: these are **deliberately
+not** applied during scanning. Honouring them would mean opening and decoding
+every candidate image purely to decide whether to skip it, which would dwarf
+the cost of the actual duplicate work. Resolution is taken into account where
+images are opened anyway (small-image detection and the quality-floor guard).
+
+### Sections present in the file but not yet wired up
+
+These exist in `settings.json` for forward compatibility with features that are
+still stubs. **Changing them currently has no effect:**
+
+`file_types`, `watermark_removal`, `ui`, `models`, `advanced`,
+`notifications`, `statistics`.
+
+Two inert keys were **removed** rather than left in place, because a safety
+setting that looks like a guarantee but does nothing is worse than no setting
+at all: `safety.create_backup` and `safety.preserve_originals`. The recycle bin
+already provides both guarantees unconditionally (see
+[The safety model](#the-safety-model--read-this-first)). The rationale is
+recorded in `safety._note` inside `settings.json`.
+
+---
+
+## Tests
+
+The suites are plain scripts (no pytest needed). Each runs in its **own**
+process so their global state — the config singleton, the i18n language, the
+logging handlers — cannot leak into one another.
+
+```bash
+python tests/run_all.py
+```
+
+Exit code `0` means everything passed, so it works directly as a pre-commit or
+CI gate.
+
+| Suite | Focus | Assertions |
+|---|---|---|
+| `test_fixes.py` | Round 1 audit findings (P0/P1) | 63 |
+| `verify_e2e.py` | End-to-end scenarios on real generated images | 22 |
+| `test_fixes_round2.py` | Safety gate, date criterion, quality floor | 59 |
+| `test_fixes_round3.py` | Scoring, date sources, language defaults | 43 |
+| `test_fixes_round4.py` | Scan filters, logging, config writes, safety keys | 119 |
+| | **Total** | **306** |
+
+Per-suite logs are written to the project root (`test_run.log`,
+`verify_e2e.log`, `test_run_round2.log`, `test_run_round3.log`,
+`test_run_round4.log`). All are git-ignored.
+
+The suites leave `config/settings.json` byte-for-byte untouched.
+
+---
+
+## Lint
+
+```bash
+python -m ruff check src main.py tests scripts
+```
+
+The gate is the **critical** rule set only — genuine defects rather than taste:
+`E9` (syntax/indentation), `F63` (invalid comparisons, duplicate keys), `F7`
+(misuse of `break`/`continue`/`return`) and `F82` (**undefined names**). It is
+configured in `pyproject.toml` and is green.
+
+The full rule set reports several hundred *pre-existing* style findings
+(annotation modernisation, import sorting, blind except, …). Those are left for
+incremental cleanup rather than being made blocking, which would either force a
+large refactor or drown the gate in noise. To see them:
+
+```bash
+python -m ruff check --select ALL src main.py tests
+```
+
+---
+
+## Project layout
+
+```
+main.py                     Entry point (configures logging, then starts the CLI)
+config/settings.json        All configuration
+requirements.txt            The five runtime dependencies
+pyproject.toml              Project metadata + ruff configuration
+install_requirements.bat    Windows dependency installer
+
+src/
+  cli/                      Interactive CLI, operation handler, settings handler
+  core/
+    config.py               Settings load/save (atomic, no-op-aware)
+    file_selector.py        Chooses the best image of each group
+    image_analyzer.py       Orchestrates the operations
+    detectors/              Duplicate, similarity and corruption detectors
+    processors/             Thin processor layer over the detectors
+    i18n/                   English and Arabic translation tables
+  utils/
+    helpers/                File utils, date extraction, scan modes,
+                            logging setup, system monitoring
+    reports/                Report generators and formatters
+
+tests/                      Five suites plus the unified runner (run_all.py)
+scripts/                    run.bat and maintenance helpers
+
+reports/                    Generated reports   (created at runtime, git-ignored)
+recycle-bin/                Removed files       (created at runtime, git-ignored)
+imgsniper.log               Rotating runtime log(created at runtime, git-ignored)
+```
+
+---
+
+## Known limitations
+
+This is a beta. Be aware of the following before relying on it:
+
+- **Watermark removal, OCR and face detection are stubs.** Their configuration
+  sections (`watermark_removal`, `models`) ship in `settings.json` but nothing
+  loads them. Face detection is delivered by a separate project that will be
+  merged later and brings its own dependencies.
+- **Several settings sections are inert** — see
+  [Sections present in the file but not yet wired up](#sections-present-in-the-file-but-not-yet-wired-up).
+  They are kept for forward compatibility, not because they do anything.
+- **`filters.min_resolution` / `max_resolution` are not applied** during
+  scanning, for the performance reason given above.
+- **Similarity comparison is pairwise** within each candidate set. On very
+  large libraries the comparison phase dominates the runtime; there is no
+  BK-tree / multi-index-hashing acceleration yet.
+- **`use_gpu` has no effect** — no GPU code path exists in this project.
+
+The remediation history — every audit finding fixed so far, with the reasoning
+and the tests that pin it — is in [`CHANGELOG.md`](CHANGELOG.md).
+
+---
+
+## ملخّص بالعربية
+
+أداة لتنظيف مكتبات الصور الضخمة: تكشف الصور **المكررة** و**المتشابهة**
+و**التالفة** و**الصغيرة**، وتشرح سبب كل قرار في تقرير نصّي، ثم **تنقل** الصور
+الخاسرة إلى `recycle-bin/` بدل حذفها.
+
+- **لا يوجد حذف نهائي إطلاقًا.** كل ملف يُنقل إلى سلة المهملات مع الحفاظ على
+  هيكل مجلداته، فيبقى قابلاً للاسترداد بايت‑ببايت.
+- جرّب أولًا بوضع `safety.dry_run_mode` على `true` واقرأ التقرير قبل أي تنفيذ.
+- الاختيار يعتمد على الدقة ثم الحجم ثم التاريخ ثم اسم الملف، مع حارسَي أمان:
+  «حدّ الجودة» يمنع الاحتفاظ بصورة مصغّرة وحذف الصورة الحقيقية، و«تحذير
+  التضحية بالدقة» يُظهر في التقرير إن كان الملف المُبقَى أقل دقة من غيره.
+- الواجهة والتقرير متوفران بالعربية والإنجليزية.
+
+**التشغيل:** `python main.py` — **التثبيت:** `install_requirements.bat` —
+**الاختبارات:** `python tests/run_all.py`
+
+---
+
+## License
+
+MIT — see [`LICENSE`](LICENSE).
+
+
