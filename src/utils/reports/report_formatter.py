@@ -24,13 +24,13 @@ class ReportFormatter:
             text = i18n.get(f'reports.{key}')
             if text and not text.startswith('[Missing:'):
                 return text
-        except:
+        except Exception:
             pass
         
         try:
             # Fجميعback to شائع قسم
             return i18n.get(f'common.{key}')
-        except:
+        except Exception:
             return f"[Missing: {key}]"
     
     def get_localized_fallback(self, english_text: str, arabic_text: str) -> str:
@@ -47,7 +47,7 @@ class ReportFormatter:
             if reason_prefix.startswith('[Missing'):
                 raise ValueError("Missing translation")
             return reason_prefix
-        except:
+        except Exception:
             return self.get_localized_fallback("Selection Reason", "سبب الاختيار")
     
     def get_error_reading_text(self, error_msg: str) -> str:
@@ -57,7 +57,7 @@ class ReportFormatter:
             if base_text.startswith('[Missing'):
                 raise ValueError("Missing translation")
             return f"  ❌ {base_text}: {error_msg}"
-        except:
+        except Exception:
             error_text = self.get_localized_fallback("Error reading file", "خطأ في قراءة الملف")
             return f"  ❌ {error_text}: {error_msg}"
     

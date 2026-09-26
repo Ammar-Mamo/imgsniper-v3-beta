@@ -55,7 +55,7 @@ class ImageProcessor:
                 mode_text = "Mode"
             if workers_text.startswith('[Missing:'):
                 workers_text = "Workers"
-        except:
+        except Exception:
             mode_text = "Mode"
             workers_text = "Workers"
         
@@ -78,7 +78,7 @@ class ImageProcessor:
         """Stop monitoring when processor is destroyed."""
         try:
             system_monitor.stop_monitoring()
-        except:
+        except Exception:
             pass
     
     # Corruption Detection Methods

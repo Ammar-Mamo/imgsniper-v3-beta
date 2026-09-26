@@ -340,7 +340,7 @@ def remove_file_protection(file_path: str) -> bool:
                 # إزالة read-only attribute using Windows attrib أمر
                 subprocess.run(['attrib', '-R', str(source)], 
                              capture_output=True, check=False)
-            except:
+            except Exception:
                 pass  # Fجميعback to chmod only
                 
         return True

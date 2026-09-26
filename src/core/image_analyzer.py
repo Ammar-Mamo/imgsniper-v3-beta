@@ -61,7 +61,7 @@ class ImageAnalyzer:
                 mode_text = "Mode"
             if workers_text.startswith('[Missing:'):
                 workers_text = "Workers"
-        except:
+        except Exception:
             mode_text = "Mode"
             workers_text = "Workers"
         
@@ -178,7 +178,7 @@ class ImageAnalyzer:
                     width, height = img.size
                     size_mb = Path(img_path).stat().st_size / (1024 * 1024)
                     console.print(f"  📷 {Path(img_path).name} - {width}x{height} ({size_mb:.2f} MB)")
-            except:
+            except Exception:
                 console.print(f"  📷 {Path(img_path).name} - {i18n.get('common.error_reading_dimensions')}")
         
         if len(small_images) > 5:

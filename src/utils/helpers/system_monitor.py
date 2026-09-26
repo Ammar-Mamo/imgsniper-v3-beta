@@ -87,7 +87,7 @@ class SystemMonitor:
                 cpu_text = "CPU"
             if ram_text.startswith('[Missing:'):
                 ram_text = "RAM"
-        except:
+        except Exception:
             # Fجميعback to English if i18n is not متاح
             cpu_text = "CPU"
             ram_text = "RAM"
@@ -117,7 +117,7 @@ class SystemMonitor:
                 memory_available = "Available"
             if memory_total.startswith('[Missing:'):
                 memory_total = "Total"
-        except:
+        except Exception:
             # Fجميعback to English
             cpu_usage = "CPU Usage"
             memory_usage = "Memory Usage"

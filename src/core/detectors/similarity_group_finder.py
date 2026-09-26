@@ -37,7 +37,7 @@ def _compare_hash_batch_worker(args: tuple) -> List[tuple]:
                 if hash_diff > threshold * 3:
                     # Skip similar comparisons in this batch for أداء
                     continue
-            except:
+            except Exception:
                 continue
     
     return matches

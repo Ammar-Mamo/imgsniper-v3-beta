@@ -58,7 +58,7 @@ def _check_image_corruption_worker(img_path: str) -> tuple:
                     img_array = np.array(img)
                     if img_array.size == 0:
                         return img_path, True
-                except:
+                except Exception:
                     # If numpy fails, still عدد as corrupted
                     return img_path, True
         
