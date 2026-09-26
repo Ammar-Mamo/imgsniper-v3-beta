@@ -13,7 +13,7 @@ REM Check if Python is installed
 python --version >nul 2>&1
 if errorlevel 1 (
     echo ❌ Python is not installed on your system
-    echo please install python 3.8 or newr : https://python.org
+    echo please install python 3.8 or newer : https://python.org
     pause
     exit /b 1
 )
@@ -34,7 +34,7 @@ if errorlevel 1 (
 
 echo ✅ All libraries installed successfully
 echo.
-echo 🚀 runnig ImgSniper...
+echo 🚀 running ImgSniper...
 echo.
 
 REM Run the main application
