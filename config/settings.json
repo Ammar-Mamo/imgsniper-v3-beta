@@ -1,0 +1,245 @@
+{
+    "_comment": "ملف الإعدادات الموحد لـ ImgSniper - Unified settings for ImgSniper",
+    "_version": "1.0.0",
+    "_last_modified": "2025-01-12",
+    "language": "en",
+    "priorities": {
+        "_comment": "أولويات اختيار أفضل صورة من المجموعات المتشابهة",
+        "resolution_priority": true,
+        "size_priority": true,
+        "date_priority": "oldest",
+        "exif_priority": "oldest",
+        "modified_name_priority": "original",
+        "filename_priority": true,
+        "quality_priority": true,
+        "format_priority": [
+            "jpg",
+            "png",
+            "tiff",
+            "bmp",
+            "gif"
+        ],
+        "order": [
+            1,
+            2,
+            3,
+            4
+        ]
+    },
+    "processing": {
+        "_comment": "إعدادات المعالجة والأداء - معدلة لتوازن أفضل",
+        "use_gpu": false,
+        "phash_threshold": 5,
+        "batch_size": 3000,
+        "max_workers": 16,
+        "scan_mode": "ultra",
+        "memory_limit_mb": 8192,
+        "enable_caching": true,
+        "cache_size_mb": 512,
+        "parallel_io": true,
+        "chunk_size": 32768,
+        "use_process_pool": true
+    },
+    "paths": {
+        "_comment": "مسارات المجلدات",
+        "recycle_bin": "recycle-bin",
+        "reports": "reports",
+        "temp": "temp",
+        "cache": "cache"
+    },
+    "file_types": {
+        "_comment": "أنواع الملفات المدعومة",
+        "images": {
+            "basic": [
+                ".jpg",
+                ".jpeg",
+                ".png",
+                ".gif",
+                ".bmp"
+            ],
+            "advanced": [
+                ".tiff",
+                ".tif",
+                ".webp",
+                ".ico"
+            ],
+            "raw": [
+                ".cr2",
+                ".nef",
+                ".arw",
+                ".dng",
+                ".orf",
+                ".rw2",
+                ".pef",
+                ".srw",
+                ".x3f"
+            ],
+            "vector": [
+                ".svg"
+            ],
+            "professional": [
+                ".psd",
+                ".xcf",
+                ".ai"
+            ]
+        },
+        "videos": {
+            "common": [
+                ".mp4",
+                ".avi",
+                ".mkv",
+                ".mov",
+                ".wmv"
+            ],
+            "advanced": [
+                ".flv",
+                ".webm",
+                ".m4v",
+                ".3gp"
+            ]
+        }
+    },
+    "similarity": {
+        "_comment": "إعدادات كشف التشابه",
+        "phash": {
+            "hash_size": 8,
+            "highfreq_factor": 4,
+            "threshold": 5
+        },
+        "dhash": {
+            "hash_size": 8,
+            "threshold": 10
+        },
+        "ahash": {
+            "hash_size": 8,
+            "threshold": 15
+        },
+        "whash": {
+            "hash_size": 8,
+            "threshold": 8
+        }
+    },
+    "watermark_removal": {
+        "_comment": "إعدادات إزالة العلامات المائية",
+        "default_detection_mode": "medium_precision",
+        "black_fill_color": [
+            0,
+            0,
+            0
+        ],
+        "region_expansion_pixels": 2,
+        "min_region_size": 50,
+        "max_region_size_ratio": 0.5,
+        "overlap_threshold": 10,
+        "enable_ocr": true,
+        "ocr_confidence_threshold": 30,
+        "template_matching_threshold": 0.6,
+        "edge_detection_threshold": [
+            50,
+            150
+        ],
+        "color_variance_threshold": {
+            "high_precision": 500,
+            "medium_precision": 800,
+            "fast_detection": 1200
+        }
+    },
+    "filters": {
+        "_comment": "مرشحات الملفات",
+        "min_file_size_bytes": 1024,
+        "max_file_size_mb": 500,
+        "min_resolution": {
+            "width": 50,
+            "height": 50
+        },
+        "max_resolution": {
+            "width": 50000,
+            "height": 50000
+        },
+        "exclude_patterns": [
+            "*.tmp",
+            "*.temp",
+            "*_backup*",
+            "*.bak"
+        ],
+        "include_hidden": false,
+        "include_system": false
+    },
+    "safety": {
+        "_comment": "إعدادات الأمان",
+        "confirm_before_delete": true,
+        "create_backup": true,
+        "max_files_per_operation": 10000,
+        "dry_run_mode": false,
+        "preserve_originals": true
+    },
+    "logging": {
+        "_comment": "إعدادات السجلات",
+        "level": "INFO",
+        "file": "imgsniper.log",
+        "max_size_mb": 10,
+        "backup_count": 5,
+        "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    },
+    "ui": {
+        "_comment": "إعدادات واجهة المستخدم",
+        "theme": "auto",
+        "progress_style": "bar",
+        "show_file_paths": true,
+        "show_file_sizes": true,
+        "show_timestamps": true,
+        "animation_speed": "normal",
+        "console_width": 120
+    },
+    "models": {
+        "_comment": "إعدادات النماذج",
+        "auto_download": true,
+        "cache_models_locally": true,
+        "models_directory": "models",
+        "cleanup_on_exit": false,
+        "validate_integrity": true,
+        "max_download_retries": 3,
+        "download_timeout_seconds": 300,
+        "easyocr": {
+            "languages": [
+                "en",
+                "ar"
+            ],
+            "gpu_acceleration": false,
+            "detection_model": "craft_mlt_25k.pth",
+            "recognition_models": {
+                "latin": "latin_g2.pth",
+                "arabic": "arabic_g2.pth"
+            }
+        }
+    },
+    "advanced": {
+        "_comment": "إعدادات متقدمة للمطورين",
+        "debug_mode": false,
+        "profile_performance": false,
+        "enable_experimental": false,
+        "api_mode": false,
+        "plugin_directory": "plugins",
+        "custom_algorithms": []
+    },
+    "notifications": {
+        "_comment": "إعدادات الإشعارات",
+        "enable_sound": false,
+        "enable_desktop": false,
+        "enable_email": false,
+        "email_settings": {
+            "smtp_server": "",
+            "smtp_port": 587,
+            "username": "",
+            "password": "",
+            "recipient": ""
+        }
+    },
+    "statistics": {
+        "_comment": "إعدادات الإحصائيات",
+        "collect_usage_stats": true,
+        "save_detailed_reports": true,
+        "export_format": "txt",
+        "include_thumbnails": false
+    }
+}

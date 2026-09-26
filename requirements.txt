@@ -1,0 +1,34 @@
+# =============================================================================
+# ImgSniper v3 — runtime dependencies
+#
+# These 5 packages are the ONLY third-party modules actually imported by the
+# codebase. Verified by scanning every top-level import across src/ and main.py:
+#
+#     PIL (Pillow) · imagehash · numpy · psutil · rich
+#
+# The previous list declared 22 packages (~3-5 GB of downloads), including
+# torch + torchvision (CUDA wheels on Windows), easyocr, opencv-python, scipy,
+# scikit-image, pytesseract and pathlib2 -- a Python-2 backport of pathlib that
+# is actively harmful on Python 3. All of them belonged to the OCR / vision
+# stack used by the watermark and face-detection features, which are stubs in
+# this project; face detection is delivered by a separate project that will be
+# merged later and brings its own dependencies.
+# =============================================================================
+
+# Core image processing + perceptual hashing
+Pillow>=10.0.0,<12.0.0
+imagehash>=4.3.0,<4.4.0
+numpy>=1.24.0,<2.0.0
+
+# System monitoring (memory/CPU aware worker sizing)
+psutil>=5.9.0,<6.0.0
+
+# CLI / terminal UI (menus, panels, progress bars, prompts)
+rich>=13.0.0,<15.0.0
+
+# =============================================================================
+# Development / testing (optional)
+#   pip install pytest ruff
+# =============================================================================
+# pytest>=7.4.0,<8.0.0
+# ruff>=0.1.0,<1.0.0

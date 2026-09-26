@@ -1,0 +1,516 @@
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 📁 أدوات التعامل مع الملفات - File Utilities
+# ══════════════════════════════════════════════════════════════════════════════
+# الوظائف الأساسية:
+#   • فحص وجلب ملفات الصور
+#   • نقل آمن للملفات إلى سلة المهملات المنظمة
+#   • التعامل مع الملفات المحمية والقراءة فقط
+#   • الحذف القسري للملفات المحمية
+#   • إدارة صلاحيات الملفات عبر أنظمة التشغيل المختلفة
+# ══════════════════════════════════════════════════════════════════════════════
+
+"""
+دوال مساعدة للتعامل مع الملفات
+تحتوي على جميع العمليات المتعلقة بـ:
+- فحص الملفات والمجلدات
+- نقل الملفات إلى سلة المهملات
+- التحقق من صلاحيات الملفات
+- الحذف القسري للملفات المحمية
+"""
+# وحدة مساعدة - دوال مشتركة ومساعدة للوحدات الأخرى
+
+
+import os
+import shutil
+from pathlib import Path
+from typing import List, Set
+
+from ...core.config import config
+from ...core.i18n.i18n import i18n
+
+import sys
+
+from rich.console import Console
+
+# Module-level console used for status messages that previously used bare
+# print calls. Rich degrades gracefully on limited code pages / redirected
+# stdout, so emoji/Unicode output can no longer crash file operations.
+_utils_console = Console()
+
+
+def _safe_print(message) -> None:
+    """Print a status message without ever raising on Unicode/encoding issues.
+
+    markup=False is essential: file paths may contain '[' / ']' which rich
+    would otherwise misinterpret as markup tags.
+    """
+    try:
+        _utils_console.print(message, markup=False, highlight=False)
+    except Exception:
+        try:
+            sys.stdout.write(str(message).encode("ascii", "replace").decode("ascii") + "\n")
+        except Exception:
+            pass
+
+
+def clean_path_for_recycle_bin(source_path: Path) -> Path:
+    """Clean and organize path for recycle bin, removing user-specific parts."""
+    source_absolute = source_path.resolve()
+    
+    # Try to find a معنىful relative مسار
+    relative_path = None
+    
+    # Common base مسارs to remove (مستخدم-محدد جزءs)
+    common_bases = [
+        Path.home(),  # C:\Users\مستخدماسم
+        Path.home().parent,  # C:\Users
+        Path("C:/Users"),
+        Path("C:/"),
+        Path("/")
+    ]
+    
+    for base in common_bases:
+        try:
+            if source_absolute.is_relative_to(base):
+                relative_path = source_absolute.relative_to(base)
+                break
+        except (ValueError, AttributeError):
+            continue
+    
+    # If no relative مسار found, use the مملوء مسار without drive
+    if relative_path is None:
+        relative_path = Path(*source_absolute.parts[1:]) if len(source_absolute.parts) > 1 else source_absolute
+    
+    # إزالة مستخدم-محدد مجلد اسمs from the مسار
+    path_parts = []
+    skip_next = False
+    
+    for part in relative_path.parts[:-1]:  # Exclude ملفاسم
+        part_lower = part.lower()
+        
+        # Skip مستخدم-محدد مجلدs and temp مجلدs
+        if part_lower in ['users', 'user', 'home']:
+            skip_next = True
+            continue
+        elif skip_next:
+            skip_next = False
+            continue
+        elif part_lower in ['appdata', 'temp', 'tmp'] or part_lower.startswith('tmp'):
+            # Skip temp مجلدs كاملly
+            continue
+        else:
+            path_parts.append(part)
+    
+    # Return cleaned مسار, ensuring we have at least something معنىful
+    if path_parts:
+        return Path(*path_parts)
+    else:
+        # If no معنىful مسار, use the parent مجلد اسم of the ملف
+        parent_name = source_absolute.parent.name
+        if parent_name and parent_name.lower() not in ['temp', 'tmp', 'appdata']:
+            return Path(parent_name)
+        else:
+            return Path("misc")  # Deعيب مجلد for miscellaneous ملفات
+
+# جلب جميع ملفات الصور من المجلدات المحددة
+        # يبحث في جميع المجلدات الفرعية بشكل تلقائي
+        # يدعم الصيغ: jpg, jpeg, png, gif, bmp, webp, tiff, svg
+        # يتجاهل الملفات التالفة أو غير القابلة للقراءة
+
+def get_all_images(folder_path: str, supported_formats: Set[str]) -> List[str]:
+    """Get all image files from a folder and its subfolders."""
+    image_files = []
+    folder = Path(folder_path)
+    
+    if not folder.exists():
+        return image_files
+    
+    for file_path in folder.rglob('*'):
+        if file_path.is_file() and file_path.suffix.lower() in supported_formats:
+            image_files.append(str(file_path))
+    
+    return image_files
+
+# Global variable to store حالي جلسة مجلد
+_current_session_folder = None
+
+def get_session_folder_name(base_path: Path) -> Path:
+    """Get a unique session folder name for the current operation."""
+    global _current_session_folder
+    
+    # If we alجاهز have a جلسة مجلد for this تشغيل, use it
+    if _current_session_folder and _current_session_folder.exists():
+        return _current_session_folder
+    
+    # إنشاء جديد جلسة مجلد
+    if not base_path.exists():
+        _current_session_folder = base_path
+        return base_path
+    
+    counter = 2
+    original_name = base_path.name
+    parent = base_path.parent
+    
+    while True:
+        new_name = f"{original_name} ({counter})"
+        new_path = parent / new_name
+        if not new_path.exists():
+            _current_session_folder = new_path
+            return new_path
+        counter += 1
+
+def reset_session_folder():
+    """Reset the session folder for a new operation."""
+    global _current_session_folder
+    _current_session_folder = None
+
+# نقل الملف إلى سلة المهملات المنظمة
+        # ينشئ هيكل مجلدات منظم حسب نوع العملية
+        # يتعامل مع الملفات المحمية والمكررة الأسماء
+        # يعيد مسار المجلد الذي تم النقل إليه عند النجاح
+
+def move_to_recycle_bin(file_path: str, subfolder: str = None):
+    """Move a file to the recycle bin directory preserving folder structure.
+    
+    Args:
+        file_path: Path to the file to move
+        subfolder: Optional subfolder within recycle bin (e.g., 'small', 'corrupted')
+    """
+    source = Path(file_path)
+    if not source.exists():
+        return
+    
+    # safety.dry_run_mode: announce what WOULD be moved and touch nothing.
+    # Checked BEFORE any mkdir/session-folder creation so a dry run leaves the
+    # filesystem completely untouched (no empty recycle-bin dirs either).
+    # The "dry_run" sentinel is deliberately NOT in the callers' skip-lists, so
+    # reports and counters still show exactly what would have been deleted.
+    if config.get('safety.dry_run_mode', False):
+        _safe_print(f"🔍 {i18n.get('safety.dry_run_would_move')}: {source}")
+        return "dry_run"
+    
+    # جلب recycle bin مسار
+    recycle_bin = Path.cwd() / config.get('paths.recycle_bin', 'recycle-bin')
+    
+    # Add subمجلد if specified
+    if subfolder:
+        recycle_bin = recycle_bin / subfolder
+    
+    recycle_bin.mkdir(parents=True, exist_ok=True)
+    
+    # جلب cleaned مسار هيكل
+    cleaned_path = clean_path_for_recycle_bin(source)
+    
+    # إنشاء وجهة مسار preserving معنىful مجلد هيكل
+    if cleaned_path != Path("."):
+        base_destination_dir = recycle_bin / cleaned_path
+        
+        # جلب جلسة مجلد اسم (same for جميع ملفات in this تشغيل)
+        destination_dir = get_session_folder_name(base_destination_dir)
+        destination_dir.mkdir(parents=True, exist_ok=True)
+        destination = destination_dir / source.name
+    else:
+        destination = recycle_bin / source.name
+    
+    # Handle ملفاسم تعارضs
+    counter = 1
+    original_destination = destination
+    while destination.exists():
+        stem = original_destination.stem
+        suffix = original_destination.suffix
+        if cleaned_path != Path("."):
+            destination = destination_dir / f"{stem}_{counter}{suffix}"
+        else:
+            destination = recycle_bin / f"{stem}_{counter}{suffix}"
+        counter += 1
+    
+    # فحص if ملف is read-only or protected before محاولةing to move
+    try:
+        # Test if we can وصول the ملف for writing
+        if source.exists():
+            # فحص ملف سمات on Windows
+            import stat
+            file_stat = source.stat()
+            
+            # فحص if ملف is read-only
+            if not (file_stat.st_mode & stat.S_IWRITE):
+                _safe_print(f"⏭️ {i18n.get('protected_files.skipping_readonly')}: {source}")
+                _safe_print(f"   {i18n.get('protected_files.file_protected')}")
+                return "skipped_readonly"
+            
+            # Try to open ملف to check if it's in use
+            try:
+                with open(source, 'r+b'):
+                    pass
+            except PermissionError:
+                _safe_print(f"⏭️ {i18n.get('protected_files.skipping_protected')}: {source}")
+                _safe_print(f"   {i18n.get('protected_files.file_in_use')}")
+                return "skipped_protected"
+                
+    except Exception as e:
+        _safe_print(f"⏭️ {i18n.get('protected_files.access_check_failed')}: {source}")
+        return "skipped_error"
+    
+    # نقل the ملف only if it's not protected
+    try:
+        shutil.move(str(source), str(destination))
+        return str(destination.parent)  # Return the مجلد where ملف was moved
+    except PermissionError as e:
+        _safe_print(f"⚠️ {i18n.get('protected_files.protection_changed')}: {source}: {e}")
+        _safe_print(f"   {i18n.get('protected_files.protection_changed')}")
+        return False
+    except FileNotFoundError as e:
+        _safe_print(f"❌ {i18n.get('protected_files.file_not_found')}: {source}: {e}")
+        return False
+    except Exception as e:
+        _safe_print(f"❌ {i18n.get('protected_files.error_moving')} {source} → {destination}: {e}")
+        return False
+
+# فحص ما إذا كان الملف محمي أو للقراءة فقط
+        # يتحقق من صلاحيات النظام وحالة الاستخدام
+        # يدعم أنظمة Windows و Linux و Mac
+        # يعيد True إذا كان الملف محمي أو قيد الاستخدام
+
+# فحص حالة حماية الملف وصلاحيات الوصول
+# ═══════════════════════════════════════════
+# يتحقق من:
+# • صلاحيات القراءة والكتابة
+# • حالة read-only
+# • استخدام الملف من برنامج آخر
+# • قيود نظام التشغيل
+# يدعم: Windows, Linux, macOS
+def is_file_protected(file_path: str) -> bool:
+    """Check if a file is read-only or protected before attempting operations."""
+    source = Path(file_path)
+    
+    try:
+        if not source.exists():
+            return False
+            
+        # فحص ملف سمات on Windows
+        import stat
+        file_stat = source.stat()
+        
+        # فحص if ملف is read-only
+        if not (file_stat.st_mode & stat.S_IWRITE):
+            return True
+        
+        # Try to open ملف to check if it's in use
+        try:
+            with open(source, 'r+b'):
+                pass
+        except PermissionError:
+            return True
+            
+        return False
+        
+    except Exception:
+        return True  # Consider as protected if we can't check
+
+# إزالة حماية الملف وصلاحيات القراءة فقط
+        # يستخدم chmod على Linux/Mac و attrib على Windows
+        # يحاول عدة طرق لإزالة الحماية
+        # يعيد True إذا تمت إزالة الحماية بنجاح
+
+def remove_file_protection(file_path: str) -> bool:
+    """Remove read-only and protection attributes from a file."""
+    source = Path(file_path)
+    
+    try:
+        if not source.exists():
+            return False
+            
+        import stat
+        import os
+        
+        # جلب حالي إذنs
+        current_permissions = source.stat().st_mode
+        
+        # Add write إذنs
+        new_permissions = current_permissions | stat.S_IWUSR | stat.S_IWRITE
+        
+        # Apply جديد إذنs
+        os.chmod(source, new_permissions)
+        
+        # On Windows, also محاولة to remove read-only attribute
+        if os.name == 'nt':
+            try:
+                import subprocess
+                # إزالة read-only attribute using Windows attrib أمر
+                subprocess.run(['attrib', '-R', str(source)], 
+                             capture_output=True, check=False)
+            except:
+                pass  # Fجميعback to chmod only
+                
+        return True
+        
+    except Exception as e:
+        _safe_print(f"⚠️ {i18n.get('protected_files.force_failed').format(1)} {file_path}: {e}")
+        return False
+
+# حذف قسري للملف المحمي
+        # يزيل الحماية أولاً ثم ينقل الملف
+        # آمن - لا يحذف الملفات المستخدمة من برامج أخرى
+        # يعيد True إذا تم الحذف بنجاح
+
+def force_delete_protected_file(file_path: str, subfolder: str = "protected") -> bool:
+    """Force delete a protected file by removing protection first."""
+    try:
+        # First, محاولة to remove protection
+        if remove_file_protection(file_path):
+            _safe_print(f"🔓 {i18n.get('protected_files.protection_removed').format(Path(file_path).name)}")
+            
+            # Now محاولة to move to recycle bin
+            result = move_to_recycle_bin(file_path, subfolder=subfolder)
+            
+            if result and result not in ["skipped_readonly", "skipped_protected", "skipped_error"]:
+                return True
+        
+        return False
+        
+    except Exception as e:
+        _safe_print(f"❌ {i18n.get('protected_files.force_failed').format(1)}: {file_path}: {e}")
+        return False
+
+def filter_protected_files(file_list: list, force_delete: bool = False) -> tuple:
+    """Filter protected files from a list. 
+    Args:
+        file_list: List of file paths
+        force_delete: If True, try to force delete protected files
+    Returns: 
+        (available_files, protected_files, force_deletable_files)
+    """
+    available_files = []
+    protected_files = []
+    force_deletable_files = []
+    
+    for file_path in file_list:
+        if is_file_protected(file_path):
+            if force_delete:
+                # فحص if we can إمكانيةly قوة delete this ملف
+                if can_force_delete(file_path):
+                    force_deletable_files.append(file_path)
+                    _safe_print(f"🔓 {i18n.get('protected_files.detected_protected').format(1)} ({i18n.get('protected_files.force_delete_option')}): {Path(file_path).name}")
+                else:
+                    protected_files.append(file_path)
+                    _safe_print(f"⛔ {i18n.get('protected_files.cannot_force_delete').format(1)}: {Path(file_path).name}")
+            else:
+                protected_files.append(file_path)
+                _safe_print(f"⏭️ {i18n.get('protected_files.skipping_readonly')}: {Path(file_path).name}")
+        else:
+            available_files.append(file_path)
+    
+    return available_files, protected_files, force_deletable_files
+
+def can_force_delete(file_path: str) -> bool:
+    """Check if a protected file can potentially be force deleted."""
+    source = Path(file_path)
+    
+    try:
+        if not source.exists():
+            return False
+            
+        # فحص if ملف is in use by another عملية
+        try:
+            with open(source, 'r+b'):
+                pass
+            # If we can open it, we can probably delete it
+            return True
+        except PermissionError:
+            # File might be in use, but we can still محاولة to remove protection
+            return True
+        except Exception:
+            return False
+            
+    except Exception:
+        return False
+
+# التعامل مع الملفات المحمية مع خيار المستخدم
+        # يصنف الملفات إلى: عادية، محمية قابلة للحذف، محمية بقوة
+        # يسأل المستخدم عن الحذف القسري للملفات المحمية
+        # يعيد: (ملفات_للمعالجة، عدد_المحمية، عدد_المحذوفة_قسرياً)
+
+# التعامل الذكي مع الملفات المحمية
+# ════════════════════════════════════
+# العملية:
+# 1. تصنيف الملفات (عادية، محمية، محمية بقوة)
+# 2. عرض خيارات على المستخدم
+# 3. الحذف القسري للملفات المحمية (اختياري)
+# 4. تقرير شامل عن النتائج
+# الأمان: لا يحذف الملفات الحيوية للنظام
+def handle_protected_files_with_user_choice(files_to_delete: list, console, subfolder: str = "protected") -> tuple:
+    """Handle protected files with user choice for force deletion.
+    Returns: (final_files_to_delete, protected_files_count, force_deleted_count)
+    """
+    from ...core.i18n.i18n import i18n
+    
+    # فحص for protected ملفات
+    available_files, protected_files, force_deletable_files = filter_protected_files(files_to_delete, force_delete=True)
+    
+    if not protected_files and not force_deletable_files:
+        return available_files, 0, 0
+    
+    total_protected = len(protected_files) + len(force_deletable_files)
+    console.print(f"[yellow]{i18n.get('protected_files.detected_protected').format(total_protected)}[/yellow]")
+    
+    # If there are قوة-deleجدول ملفات, ask مستخدم
+    force_deleted_count = 0
+    if force_deletable_files:
+        console.print(f"[yellow]{i18n.get('protected_files.force_delete_option')}[/yellow]")
+        console.print(f"[red]{i18n.get('protected_files.force_delete_warning')}[/red]")
+        
+        try:
+            choice = input(f"{i18n.get('protected_files.force_delete_confirm')} ").strip().lower()
+            
+            if choice in ['y', 'yes', 'نعم', 'ن']:
+                console.print(f"[yellow]{i18n.get('protected_files.removing_protection')}[/yellow]")
+                
+                # Try to قوة delete كل protected ملف
+                successfully_force_deleted = []
+                for file_path in force_deletable_files:
+                    if force_delete_protected_file(file_path, subfolder):
+                        successfully_force_deleted.append(file_path)
+                        force_deleted_count += 1
+                
+                if successfully_force_deleted:
+                    console.print(f"[green]{i18n.get('protected_files.force_deleted').format(len(successfully_force_deleted))}[/green]")
+                
+                # Failed قوة deletions reرئيسي in protected قائمة
+                failed_force_deletions = [f for f in force_deletable_files if f not in successfully_force_deleted]
+                protected_files.extend(failed_force_deletions)
+                
+                if failed_force_deletions:
+                    console.print(f"[red]{i18n.get('protected_files.force_failed').format(len(failed_force_deletions))}[/red]")
+                    
+            else:
+                # User chose not to قوة delete
+                protected_files.extend(force_deletable_files)
+                console.print(f"[yellow]{i18n.get('protected_files.skip_protected').format(len(force_deletable_files))}[/yellow]")
+                
+        except KeyboardInterrupt:
+            protected_files.extend(force_deletable_files)
+            console.print(f"[yellow]{i18n.get('protected_files.skip_protected').format(len(force_deletable_files))}[/yellow]")
+    
+    # Show نهائي ملخص
+    if protected_files:
+        console.print(f"[yellow]{i18n.get('protected_files.cannot_force_delete').format(len(protected_files))}[/yellow]")
+    
+    return available_files, len(protected_files), force_deleted_count
+
+def get_file_info(file_path: str) -> dict:
+    """Get detailed information about a file."""
+    path = Path(file_path)
+    
+    if not path.exists():
+        return {}
+    
+    stat = path.stat()
+    
+    return {
+        'name': path.name,
+        'size': stat.st_size,
+        'modified_time': stat.st_mtime,
+        'created_time': stat.st_ctime,
+        'path': str(path)
+    }
