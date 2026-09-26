@@ -21,8 +21,10 @@
 # وحدة مساعدة - دوال مشتركة ومساعدة للوحدات الأخرى
 
 
+import fnmatch
 import os
 import shutil
+import stat as stat_module
 from pathlib import Path
 from typing import List, Set
 
@@ -118,18 +120,209 @@ def clean_path_for_recycle_bin(source_path: Path) -> Path:
         # يدعم الصيغ: jpg, jpeg, png, gif, bmp, webp, tiff, svg
         # يتجاهل الملفات التالفة أو غير القابلة للقراءة
 
+# ── Audit finding P2-7 ────────────────────────────────────────────────────────
+# get_all_images() used to return EVERY file carrying an image extension,
+# ignoring the whole filters.* section of settings.json and descending into
+# ImgSniper's own output directories. When the scanned folder contained the
+# project (or was the CWD the recycle bin gets created in), files already
+# deleted into recycle-bin/ came straight back into the pipeline and were
+# hashed, reported and MOVED AGAIN.
+#
+# The exclusion list below is resolved to ABSOLUTE paths rather than matched by
+# directory NAME on purpose: a user may legitimately keep photos in a folder
+# called "reports", and silently skipping it would hide real images.
+#
+# filters.min_resolution / max_resolution are deliberately NOT applied here.
+# Honouring them would mean opening and decoding every candidate image during
+# the scan (tens of thousands of files) purely to decide whether to skip it,
+# which would dwarf the cost of the actual duplicate/similarity work. Resolution
+# is already considered where the image gets opened anyway: the small-images
+# detector and the quality-floor guard in FileSelector.
+
+# src/utils/helpers/file_utils.py -> helpers -> utils -> src -> project root
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+
+# Windows-only stat attributes. Both are absent on POSIX, where the checks
+# below degrade to the dot-prefix convention (hidden) and "never system".
+_WIN_ATTRS = hasattr(stat_module, 'FILE_ATTRIBUTE_HIDDEN')
+_WIN_HIDDEN = getattr(stat_module, 'FILE_ATTRIBUTE_HIDDEN', 0)
+_WIN_SYSTEM = getattr(stat_module, 'FILE_ATTRIBUTE_SYSTEM', 0)
+
+# Directory flags are stat'ed at most once per scan; a deep tree would
+# otherwise re-stat the same ancestor for every single file inside it.
+_DIR_FLAG_CACHE = {}
+
+
+def _get_excluded_dir_prefixes() -> List[str]:
+    """
+    Normalized path prefixes ImgSniper writes to, which must never be scanned.
+
+    Resolved against BOTH the project root and the current working directory:
+    move_to_recycle_bin() builds its target from Path.cwd(), while the settings
+    file itself lives under the project root, so either can be the real one
+    depending on how the app was launched. Every entry is separator-terminated
+    so the prefix test matches only true descendants and can never catch a
+    sibling such as "reports-old", which would silently hide real photos.
+    """
+    prefixes = []
+    seen = set()
+    for key, default in (('paths.recycle_bin', 'recycle-bin'),
+                         ('paths.reports', 'reports'),
+                         ('paths.temp', 'temp'),
+                         ('paths.cache', 'cache')):
+        name = config.get(key, default)
+        if not name:
+            continue
+        for base in (_PROJECT_ROOT, Path.cwd()):
+            try:
+                resolved = (base / str(name)).resolve()
+            except OSError:
+                continue
+            text = os.path.normcase(str(resolved))
+            if text in seen:
+                continue
+            seen.add(text)
+            prefixes.append(text + os.sep)
+    return prefixes
+
+
+def _is_excluded(resolved_text: str, prefixes: List[str]) -> bool:
+    """True when a normalized absolute path sits inside an excluded directory."""
+    return any(resolved_text.startswith(p) for p in prefixes)
+
+
+def _dir_flags(dir_path: Path):
+    """Cached (hidden, system) flags for one directory."""
+    key = str(dir_path)
+    cached = _DIR_FLAG_CACHE.get(key)
+    if cached is not None:
+        return cached
+    hidden = dir_path.name.startswith('.')
+    system = False
+    if _WIN_ATTRS:
+        try:
+            attrs = os.stat(dir_path).st_file_attributes
+            hidden = hidden or bool(attrs & _WIN_HIDDEN)
+            system = bool(attrs & _WIN_SYSTEM)
+        except OSError:
+            pass
+    cached = (hidden, system)
+    _DIR_FLAG_CACHE[key] = cached
+    return cached
+
+
+def _ancestor_flags(file_path: Path, root: Path):
+    """OR-ed (hidden, system) over every directory between root and the file."""
+    hidden = system = False
+    parent = file_path.parent
+    while parent != root and parent != parent.parent:
+        dir_hidden, dir_system = _dir_flags(parent)
+        hidden = hidden or dir_hidden
+        system = system or dir_system
+        parent = parent.parent
+    return hidden, system
+
+
+def _matches_exclude_pattern(name: str, patterns: List[str]) -> bool:
+    """Case-insensitive glob match, behaving identically on Windows and Linux."""
+    lowered = name.lower()
+    return any(fnmatch.fnmatchcase(lowered, p.lower()) for p in patterns)
+
+
 def get_all_images(folder_path: str, supported_formats: Set[str]) -> List[str]:
-    """Get all image files from a folder and its subfolders."""
+    """
+    Get all image files from a folder and its subfolders.
+
+    Applies the filters.* section of settings.json (exclude_patterns,
+    include_hidden, include_system, min_file_size_bytes, max_file_size_mb) and
+    never returns files inside ImgSniper's own output directories. See the
+    P2-7 note above for why resolution filters are intentionally skipped.
+
+    Every size/attribute filter treats 0 (or a missing/invalid value) as
+    "disabled", so the scan can always be widened again from settings.json
+    without a code change.
+    """
     image_files = []
     folder = Path(folder_path)
-    
+
     if not folder.exists():
         return image_files
-    
+
+    # Read the filter settings ONCE, not per file: a scan can cover tens of
+    # thousands of images and every value below is constant for the whole walk.
+    filters = config.get('filters', {}) or {}
+    if not isinstance(filters, dict):
+        filters = {}
+
+    exclude_patterns = [p for p in (filters.get('exclude_patterns') or [])
+                        if isinstance(p, str) and p.strip()]
+    include_hidden = bool(filters.get('include_hidden', False))
+    include_system = bool(filters.get('include_system', False))
+
+    try:
+        min_size = max(0, int(filters.get('min_file_size_bytes', 0) or 0))
+    except (TypeError, ValueError):
+        min_size = 0
+    try:
+        max_size = max(0, int(float(filters.get('max_file_size_mb', 0) or 0)
+                              * 1024 * 1024))
+    except (TypeError, ValueError):
+        max_size = 0
+
+    excluded_prefixes = _get_excluded_dir_prefixes()
+    _DIR_FLAG_CACHE.clear()
+
     for file_path in folder.rglob('*'):
-        if file_path.is_file() and file_path.suffix.lower() in supported_formats:
-            image_files.append(str(file_path))
-    
+        if file_path.suffix.lower() not in supported_formats:
+            continue
+
+        # A single stat() answers existence, regular-file, size and (on
+        # Windows) hidden/system attributes, so the walk stays cheap.
+        try:
+            st = file_path.stat()
+        except OSError:
+            continue                      # broken symlink / permission denied
+        if not stat_module.S_ISREG(st.st_mode):
+            continue
+
+        # Never rescan ImgSniper's own output. Without this, files already
+        # deleted into recycle-bin/ re-entered the pipeline and were reported
+        # and moved again on the next run.
+        if excluded_prefixes:
+            try:
+                resolved_text = os.path.normcase(str(file_path.resolve()))
+            except OSError:
+                resolved_text = os.path.normcase(str(file_path.absolute()))
+            if _is_excluded(resolved_text, excluded_prefixes):
+                continue
+
+        if not include_hidden or not include_system:
+            hidden = file_path.name.startswith('.')
+            system = False
+            if _WIN_ATTRS:
+                attrs = getattr(st, 'st_file_attributes', 0)
+                hidden = hidden or bool(attrs & _WIN_HIDDEN)
+                system = bool(attrs & _WIN_SYSTEM)
+            if not hidden or not system:
+                anc_hidden, anc_system = _ancestor_flags(file_path, folder)
+                hidden = hidden or anc_hidden
+                system = system or anc_system
+            if hidden and not include_hidden:
+                continue
+            if system and not include_system:
+                continue
+
+        if exclude_patterns and _matches_exclude_pattern(file_path.name,
+                                                        exclude_patterns):
+            continue
+
+        if min_size and st.st_size < min_size:
+            continue
+        if max_size and st.st_size > max_size:
+            continue
+
+        image_files.append(str(file_path))
+
     return image_files
 
 # Global variable to store حالي جلسة مجلد

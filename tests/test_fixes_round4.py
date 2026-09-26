@@ -347,6 +347,206 @@ for f in sorted((ROOT / 'src').rglob('*.py')):
 P('zero bare except: clauses remain in src/', not bare, '; '.join(bare))
 
 # =====================================================================
+SEP('P2-7  get_all_images applies filters.* (was completely inert)')
+# =====================================================================
+from src.utils.helpers.file_utils import get_all_images             # noqa: E402
+
+FORMATS = {'.jpg', '.jpeg', '.png'}
+scan_root = TEST_DIR / 'scan'
+(scan_root / 'sub').mkdir(parents=True)
+(scan_root / '.hiddendir').mkdir()
+
+_filters_backup = json.loads(json.dumps(config.get('filters', {})))
+
+
+def w(rel, size=4096):
+    """get_all_images only stats files, so plain bytes are enough (and fast)."""
+    p = scan_root / rel
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_bytes(b'\x00' * size)
+    return p
+
+
+def names_of(root=None):
+    return sorted(Path(p).name for p in get_all_images(str(root or scan_root), FORMATS))
+
+
+def restore_filters():
+    config.config['filters'] = json.loads(json.dumps(_filters_backup))
+
+
+w('good.jpg')
+w('sub/good2.jpg')
+w('tiny.jpg', 100)                 # below filters.min_file_size_bytes (1024)
+w('photo_backup_1.jpg')            # matches filters.exclude_patterns *_backup*
+w('.dotfile.jpg')                  # hidden via the dot-prefix convention
+w('.hiddendir/inside.jpg')         # inside a hidden directory
+w('notes.txt')                     # unsupported extension
+
+base_names = names_of()
+P('plain images are found, including subfolders',
+  'good.jpg' in base_names and 'good2.jpg' in base_names, str(base_names))
+P('min_file_size_bytes excludes the 100-byte file', 'tiny.jpg' not in base_names)
+P('exclude_patterns "*_backup*" is applied', 'photo_backup_1.jpg' not in base_names)
+P('dot-prefixed file excluded while include_hidden=false',
+  '.dotfile.jpg' not in base_names)
+P('file inside a hidden directory excluded while include_hidden=false',
+  'inside.jpg' not in base_names)
+P('unsupported extension is still ignored', 'notes.txt' not in base_names)
+
+config.config['filters']['include_hidden'] = True
+hidden_names = names_of()
+P('include_hidden=true admits the dot-prefixed file', '.dotfile.jpg' in hidden_names)
+P('include_hidden=true admits files inside a hidden directory',
+  'inside.jpg' in hidden_names)
+restore_filters()
+
+config.config['filters']['min_file_size_bytes'] = 0
+P('min_file_size_bytes=0 disables the size floor', 'tiny.jpg' in names_of())
+restore_filters()
+
+w('huge.jpg', 3 * 1024 * 1024)     # 3 MB
+config.config['filters']['max_file_size_mb'] = 1
+capped = names_of()
+P('max_file_size_mb excludes files above the limit', 'huge.jpg' not in capped)
+P('max_file_size_mb keeps files below the limit', 'good.jpg' in capped)
+config.config['filters']['max_file_size_mb'] = 0
+P('max_file_size_mb=0 disables the ceiling', 'huge.jpg' in names_of())
+restore_filters()
+
+w('skipme_now.jpg')
+w('SKIPME_upper.jpg')
+w('keepme.jpg')
+config.config['filters']['exclude_patterns'] = ['skipme*.jpg']
+custom = names_of()
+P('custom exclude_patterns are honored', 'skipme_now.jpg' not in custom)
+P('exclude_patterns matching is case-insensitive on every platform',
+  'SKIPME_upper.jpg' not in custom)
+P('non-matching files survive a custom pattern', 'keepme.jpg' in custom)
+P('the shipped *_backup* rule is gone once patterns are replaced',
+  'photo_backup_1.jpg' in custom)
+restore_filters()
+
+config.config['filters'] = {'exclude_patterns': [], 'include_hidden': True,
+                            'include_system': True, 'min_file_size_bytes': 0,
+                            'max_file_size_mb': 0}
+P('an all-permissive filters section admits everything',
+  {'good.jpg', 'tiny.jpg', 'huge.jpg', '.dotfile.jpg', 'inside.jpg',
+   'photo_backup_1.jpg'} <= set(names_of()))
+restore_filters()
+
+# =====================================================================
+SEP('P2-7  ImgSniper output dirs are never rescanned')
+# =====================================================================
+_paths_backup = json.loads(json.dumps(config.get('paths', {})))
+
+bin_dir = scan_root / 'my-bin'
+(bin_dir / 'nested').mkdir(parents=True)
+(bin_dir / 'nested' / 'deleted.jpg').write_bytes(b'\x00' * 4096)
+rep_dir = scan_root / 'my-reports'
+rep_dir.mkdir()
+(rep_dir / 'thumb.jpg').write_bytes(b'\x00' * 4096)
+# A sibling whose name merely STARTS with the excluded name must survive,
+# otherwise the prefix test would silently hide real photos.
+sib_dir = scan_root / 'my-reports-old'
+sib_dir.mkdir()
+(sib_dir / 'legit.jpg').write_bytes(b'\x00' * 4096)
+
+config.config['paths']['recycle_bin'] = str(bin_dir)
+config.config['paths']['reports'] = str(rep_dir)
+excl_names = names_of()
+P('recycle-bin contents are never scanned (deep nesting too)',
+  'deleted.jpg' not in excl_names, str(excl_names))
+P('reports contents are never scanned', 'thumb.jpg' not in excl_names)
+P('a sibling named "<reports>-old" is NOT wrongly excluded',
+  'legit.jpg' in excl_names)
+w('my-reports.jpg')                # same stem as the excluded dir, but a file
+P('a FILE named "<reports>.jpg" is not caught by the dir exclusion',
+  'my-reports.jpg' in names_of())
+P('normal files are still scanned alongside the exclusions',
+  'good.jpg' in excl_names)
+config.config['paths'] = json.loads(json.dumps(_paths_backup))
+P('exclusions disappear when paths.* is restored',
+  'deleted.jpg' in names_of() and 'thumb.jpg' in names_of())
+
+# move_to_recycle_bin() builds its target from Path.cwd(), so a CWD-relative
+# name has to resolve correctly too.
+cwd_root = TEST_DIR / 'cwdroot'
+(cwd_root / 'recycle-bin' / 'deep').mkdir(parents=True)
+(cwd_root / 'recycle-bin' / 'deep' / 'old.jpg').write_bytes(b'\x00' * 4096)
+(cwd_root / 'live.jpg').write_bytes(b'\x00' * 4096)
+_saved_cwd = os.getcwd()
+try:
+    os.chdir(str(cwd_root))
+    config.config['paths']['recycle_bin'] = 'recycle-bin'
+    cwd_names = names_of(cwd_root)
+finally:
+    os.chdir(_saved_cwd)
+    config.config['paths'] = json.loads(json.dumps(_paths_backup))
+P('CWD-relative recycle-bin is excluded (matches move_to_recycle_bin)',
+  'old.jpg' not in cwd_names, str(cwd_names))
+P('live file in that same root is still scanned', 'live.jpg' in cwd_names)
+
+# ---------------------------------------------------------------------
+SEP('P2-7  Windows hidden / system attributes')
+# =====================================================================
+if sys.platform == 'win32':
+    import ctypes
+    ATTR_HIDDEN = 0x2
+    ATTR_SYSTEM = 0x4
+    ATTR_NORMAL = 0x80
+
+    def set_attrs(path, value):
+        ctypes.windll.kernel32.SetFileAttributesW(str(path), value)
+
+    hid_file = w('win_hidden.jpg')
+    set_attrs(hid_file, ATTR_HIDDEN)
+    P('FILE_ATTRIBUTE_HIDDEN file excluded while include_hidden=false',
+      'win_hidden.jpg' not in names_of())
+    config.config['filters']['include_hidden'] = True
+    P('include_hidden=true admits the FILE_ATTRIBUTE_HIDDEN file',
+      'win_hidden.jpg' in names_of())
+    restore_filters()
+
+    sys_file = w('win_system.jpg')
+    set_attrs(sys_file, ATTR_SYSTEM)
+    P('FILE_ATTRIBUTE_SYSTEM file excluded while include_system=false',
+      'win_system.jpg' not in names_of())
+    config.config['filters']['include_system'] = True
+    P('include_system=true admits the FILE_ATTRIBUTE_SYSTEM file',
+      'win_system.jpg' in names_of())
+    restore_filters()
+
+    # Reset to NORMAL so the temp tree can actually be deleted afterwards.
+    set_attrs(hid_file, ATTR_NORMAL)
+    set_attrs(sys_file, ATTR_NORMAL)
+else:
+    P('Windows attribute checks skipped on this platform (POSIX has neither)',
+      True)
+    P('POSIX hidden convention still works via the dot prefix',
+      '.dotfile.jpg' not in names_of())
+
+# ---------------------------------------------------------------------
+SEP('P2-7  source-level guarantees and caller regressions')
+# =====================================================================
+fu_src = read_src('src/utils/helpers/file_utils.py')
+P('get_all_images now consults the filters section',
+  "config.get('filters'" in fu_src)
+P('the old unfiltered one-liner is gone',
+  'if file_path.is_file() and file_path.suffix.lower() in supported_formats:'
+  not in fu_src)
+P('all four paths.* keys participate in the exclusion',
+  all(k in fu_src for k in ('paths.recycle_bin', 'paths.reports',
+                            'paths.temp', 'paths.cache')))
+P('resolution filters are deliberately documented as not applied here',
+  'min_resolution / max_resolution are deliberately NOT applied' in fu_src)
+for det in ('corruption_detector', 'duplicate_detector', 'similarity_detector'):
+    P(det + ' still scans through get_all_images',
+      'get_all_images(' in read_src('src/core/detectors/%s.py' % det))
+P('image_analyzer still scans through get_all_images',
+  'get_all_images(' in read_src('src/core/image_analyzer.py'))
+
+# =====================================================================
 SEP('P2-22  save_config: no-op guard + line-ending preservation')
 # =====================================================================
 from src.core.config import Config                                  # noqa: E402
