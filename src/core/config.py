@@ -91,11 +91,47 @@ class Config:
         os.replace() is atomic on both Windows and Linux, so the settings
         file is never left half-written (which would corrupt it) if the
         process is killed or the power fails mid-write.
+
+        Two guards keep this side-effect free:
+
+        * No-op writes are skipped. set() can be called many times in a row
+          (settings menu, batch updates, test suites); rewriting all 240+
+          lines plus an fsync each time is pure overhead, and it also bumps
+          the file mtime for a file whose content did not change.
+        * The file's existing line-ending style is preserved. A plain
+          text-mode open() on Windows translates every '\\n' into '\\r\\n',
+          which rewrote the WHOLE file as CRLF while git stores LF
+          (core.autocrlf=true). The result was a spurious "every line
+          changed" diff on settings.json after a single tiny edit, which
+          makes it very hard to review what actually changed.
         """
+        payload = json.dumps(self.config, indent=4, ensure_ascii=False)
+
+        # Read what is already on disk so we can (a) skip identical writes and
+        # (b) match its line-ending style. A missing/unreadable file is not an
+        # error here - we simply fall through and write it fresh with '\n'.
+        existing = None
+        try:
+            with open(self.config_path, 'r', encoding='utf-8', newline='') as f:
+                existing = f.read()
+        except (IOError, OSError):
+            existing = None
+
+        def _normalized(text):
+            return text.replace('\r\n', '\n').replace('\r', '\n').rstrip('\n')
+
+        if existing is not None:
+            if _normalized(existing) == _normalized(payload):
+                return  # content identical -> leave the file completely alone
+            if '\r\n' in existing:
+                payload = payload.replace('\n', '\r\n')
+
         tmp_path = self.config_path.with_suffix(self.config_path.suffix + '.tmp')
         try:
-            with open(tmp_path, 'w', encoding='utf-8') as f:
-                json.dump(self.config, f, indent=4, ensure_ascii=False)
+            # newline='' disables Python's newline translation so the payload
+            # above lands on disk byte-for-byte as prepared.
+            with open(tmp_path, 'w', encoding='utf-8', newline='') as f:
+                f.write(payload)
                 f.flush()
                 os.fsync(f.fileno())
             # Atomic swap into place
