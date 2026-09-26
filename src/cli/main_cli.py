@@ -27,7 +27,9 @@ class MainCLI:
         self._create_directories()
         
         # تعيين اللغة من الإعدادات
-        language = config.get('language', 'ar')
+        # Audit finding P2-18: fallback unified with config.py's default and
+        # with config/settings.json, which both now say "en".
+        language = config.get('language', 'en')
         if language and isinstance(language, str):
             i18n.set_language(language)
     

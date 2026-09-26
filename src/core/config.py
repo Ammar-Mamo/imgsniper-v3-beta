@@ -39,7 +39,11 @@ class Config:
     def _get_default_config(self) -> Dict[str, Any]:
         """Get default configuration."""
         return {
-            "language": "ar",
+            # Audit finding P2-18: this said "ar" while config/settings.json
+            # shipped "en" and main_cli.py fell back to "ar", so the effective
+            # language depended on which of the three happened to win. All
+            # three now agree on English.
+            "language": "en",
             "priorities": {
                 "order": DEFAULT_PRIORITY_ORDER,
                 "resolution_priority": True,
