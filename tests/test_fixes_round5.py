@@ -21,6 +21,15 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+# Round 7: never leave test-side config changes on disk (config.set() saves
+# immediately while the in-memory restore at the end does not) -- atexit
+# restores the exact bytes, protecting the user's real priorities.
+import atexit                                                   # noqa: E402
+_CFG_FILE = ROOT / 'config' / 'settings.json'
+_CFG_BYTES = _CFG_FILE.read_bytes() if _CFG_FILE.exists() else None
+if _CFG_BYTES is not None:
+    atexit.register(lambda: _CFG_FILE.write_bytes(_CFG_BYTES))
+
 for _stream in (sys.stdout, sys.stderr):
     try:
         _stream.reconfigure(errors='replace')
@@ -47,10 +56,10 @@ def P(name, ok, detail=''):
           (' -- ' + str(detail) if detail else ''))
 
 
-from src.core.config import config                                   # noqa: E402
+from src.core.config import config, DEFAULT_PRIORITY_ORDER            # noqa: E402
 from src.core.i18n.i18n import i18n                                  # noqa: E402
 from src.core.file_selector import (                                 # noqa: E402
-    compute_size_score, compute_resolution_score,
+    compute_size_score, compute_resolution_score, ratio_scores,
 )
 from src.core.detectors.similarity_group_finder import (             # noqa: E402
     SimilarityGroupFinder, _compare_hash_batch_worker,
@@ -72,7 +81,9 @@ _lang_backup = i18n.current_language
 
 # Deterministic environment for the assertions below.
 config.config.setdefault('priorities', {})
-config.config['priorities']['order'] = [1, 2, 3, 4]
+# Round 7: pin the SHIPPED default order (date > resolution > size > filename)
+# so these behaviours are verified against the real configuration.
+config.config['priorities']['order'] = list(DEFAULT_PRIORITY_ORDER)
 config.config['priorities']['date_priority'] = 'oldest'
 # NOTE: 'date' deliberately excluded -- priorities.date_priority holds the
 # STRING 'oldest'/'newest' (it doubles as the date enable flag); setting it
@@ -203,14 +214,16 @@ k7 = info(7.76, 6240 * 4160, 6240, 4160, '2024-07-04 21:50:51', 'exif', 2)
 d7 = info(7.77, 6240 * 4160, 6240, 4160, '2024-07-04 21:50:51', 'exif', 2, extra_bytes=10240)
 infos7 = {'k.jpg': k7, 'd.jpg': d7}
 
-P('_check_size_reason suppressed on capped tie',
-  fmt._check_size_reason('k.jpg', ['d.jpg'], k7, infos7) is None)
+P('size below the 5% no-decision gate scores as a tie (round 7)',
+  ratio_scores({'k.jpg': 7.76 * MB, 'd.jpg': 7.77 * MB}) == {'k.jpg': 5.0, 'd.jpg': 5.0})
 
 dr7 = fmt.get_deletion_reason('d.jpg', 'k.jpg', infos7)
 P('#7 deletion reason no longer claims Larger/Smaller file size',
   'Larger' not in dr7 and 'Smaller' not in dr7, dr7)
 P('#7 deletion reason is the honest tie label',
   'No decisive difference' in dr7, dr7)
+P('#7 reason names the sub-threshold size gap honestly (round 7)',
+  'no-decision threshold' in dr7 and 'Larger' not in dr7, dr7.splitlines()[-1])
 
 sr7 = fmt.get_detailed_selection_reason('k.jpg', ['k.jpg', 'd.jpg'], infos7)
 P('#7 selection reason is honest too (no invented size story)',
@@ -221,11 +234,12 @@ k15 = info(4.63, 4000 * 3000, 4000, 3000, '2023-05-21 19:30:28', 'exif', 2)
 d15 = info(4.31, 4000 * 3000, 4000, 3000, '2023-05-21 19:30:29', 'exif', 2)
 infos15 = {'k.jpg': k15, 'd.jpg': d15}
 dr15 = fmt.get_deletion_reason('d.jpg', 'k.jpg', infos15)
-P('#15 real sub-cap difference still reports Smaller file size',
-  dr15 == 'Smaller file size', dr15)
+P('#15 real sub-cap difference is attributed to file size (round 7 wording)',
+  'file size' in dr15 and '4.63 MB' in dr15 and '4.31 MB' in dr15
+  and 'higher weighted score' in dr15, dr15)
 sr15 = fmt.get_detailed_selection_reason('k.jpg', ['k.jpg', 'd.jpg'], infos15)
-P('#15 selection reason still reports larger file size',
-  'larger file size' in sr15, sr15.splitlines()[0])
+P('#15 selection reason attributes the win to file size',
+  'file size' in sr15 and 'higher weighted score' in sr15, sr15.splitlines()[0])
 
 SEP('4) honest tie labels (#18/#25/#535)')
 
@@ -270,25 +284,26 @@ sr14 = fmt.get_detailed_selection_reason(
 P('#14 same-day filename-vs-EXIF no longer reports older extracted date',
   'older extracted date' not in sr14, sr14.splitlines()[0])
 P('#14 falls through to filename importance (the honest criterion)',
-  'better filename importance' in sr14, sr14.splitlines()[0])
+  'filename importance' in sr14, sr14.splitlines()[0])
 
 k1124 = info(1.36, 1080 * 2340, 1080, 2340, '2025-04-25 04:21:34', 'exif', 8)
 d1124 = info(1.36, 1080 * 2340, 1080, 2340, '2025-05-25 23:32:21', 'exif', 8)
 infos1124 = {'k.jpg': k1124, 'd.jpg': d1124}
 sr1124 = fmt.get_detailed_selection_reason('k.jpg', ['k.jpg', 'd.jpg'], infos1124)
-P('#1124 genuine month-apart EXIF dates still report older extracted date',
-  'older extracted date' in sr1124, sr1124.splitlines()[0])
+P('#1124 genuine month-apart EXIF dates still win on the date criterion',
+  'older date' in sr1124.lower(), sr1124.splitlines()[0])
 dr1124 = fmt.get_deletion_reason('d.jpg', 'k.jpg', infos1124)
-P('#1124 deletion reason now uses merged dates -> Newer date',
-  dr1124 == 'Newer date', dr1124)
+P('#1124 deletion reason describes the kept file being older (round 7 wording)',
+  'older date' in dr1124.lower() and 'higher weighted score' in dr1124, dr1124)
 
-# Same-day gap between two EXIF timestamps stays reportable (real difference).
+# A 1-second gap between two EXIF timestamps is below the round-7 date gate
+# (DATE_GATE_SECONDS) -- it must NOT be dressed up as a decision any more.
 k_ex = info(1.0, 1000 * 1000, 1000, 1000, '2023-05-21 19:30:28', 'exif', 5)
 d_ex = info(1.0, 1000 * 1000, 1000, 1000, '2023-05-21 19:30:29', 'exif', 5)
 infos_ex = {'k.jpg': k_ex, 'd.jpg': d_ex}
 dr_ex = fmt.get_deletion_reason('d.jpg', 'k.jpg', infos_ex)
-P('same-day EXIF-vs-EXIF gap still reportable as Newer date',
-  dr_ex == 'Newer date', dr_ex)
+P('1-second EXIF gap is below the date gate -> honest tie label',
+  'No decisive difference' in dr_ex, dr_ex)
 
 SEP('6) date-only annotation in image info (#14)')
 

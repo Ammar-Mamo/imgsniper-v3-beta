@@ -8,6 +8,15 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+# Round 7: never leave test-side config changes on disk (config.set() saves
+# immediately while the in-memory restore at the end does not) -- atexit
+# restores the exact bytes, protecting the user's real priorities.
+import atexit                                                   # noqa: E402
+_CFG_FILE = ROOT / 'config' / 'settings.json'
+_CFG_BYTES = _CFG_FILE.read_bytes() if _CFG_FILE.exists() else None
+if _CFG_BYTES is not None:
+    atexit.register(lambda: _CFG_FILE.write_bytes(_CFG_BYTES))
+
 LOG_FILE = ROOT / 'test_run_round2.log'
 
 # Same safety net main.py applies: this console is cp1256, and the suite logs

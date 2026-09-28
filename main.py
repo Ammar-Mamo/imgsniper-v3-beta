@@ -36,6 +36,7 @@ for _stream in (sys.stdout, sys.stderr):
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 from src.cli.main_cli import MainCLI
+from src.core.config import config
 from src.core.i18n.i18n import get_text
 from src.utils.helpers.logging_setup import setup_logging
 # Round 6: importing image_codec registers pillow-heif's HEIC/HEIF opener
@@ -59,6 +60,12 @@ def main():
     _codecs = codec_status()
     logging.getLogger('imgsniper.main').info(
         'Optional image codecs: HEIF=%s RAW=%s', _codecs['heif'], _codecs['raw'])
+
+    # Round 7: log the priority order actually loaded, so any unexpected
+    # "revert to default" is visible in imgsniper.log instead of a mystery.
+    logging.getLogger('imgsniper.main').info(
+        'Loaded priority order: %s date_priority=%s',
+        config.get('priorities.order'), config.get('priorities.date_priority'))
 
     try:
         cli = MainCLI()

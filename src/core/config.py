@@ -12,8 +12,10 @@ from typing import Dict, Any
 # shipped settings.json so they can never drift apart again.
 # Positional meaning: [resolution, size, date, filename]; the value at each
 # position is that criterion's RANK (1 = highest priority).
-# [1, 2, 3, 4] => resolution first, then size, then date, then filename.
-DEFAULT_PRIORITY_ORDER = [1, 2, 3, 4]
+# Round 7: changed from [1, 2, 3, 4] to the order the user asked for --
+# date first, then resolution, then size, then filename:
+# [2, 3, 1, 4] => date(1) > resolution(2) > size(3) > filename(4).
+DEFAULT_PRIORITY_ORDER = [2, 3, 1, 4]
 
 class Config:
     """Configuration manager for the application."""

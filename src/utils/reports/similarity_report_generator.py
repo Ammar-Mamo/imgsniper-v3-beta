@@ -183,7 +183,7 @@ class SimilarityReportGenerator:
                                 f.write(f"  🔢 Filename Importance: {deleted_info['filename_importance']}/9\n")
                                 f.write(f"  🕒 Modified: {deleted_info['modified_time']}\n")
                                 # إضافة سبب الحذف
-                                deletion_reason = self.formatter.get_deletion_reason(file_path, kept_file, all_files_info)
+                                deletion_reason = self.formatter.get_deletion_reason(file_path, kept_file, all_files_info, files)
                                 reason_prefix = i18n.get('reports.deletion_reason')
                                 if reason_prefix.startswith('[Missing'):
                                     reason_prefix = 'سبب الحذف' if i18n.current_language == 'ar' else 'Deletion Reason'

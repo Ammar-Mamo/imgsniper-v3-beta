@@ -8,6 +8,15 @@ from pathlib import Path
 
 ROOT = Path(r'c:\Users\MamoTech\Desktop\imgsniper-v3-beta')
 sys.path.insert(0, str(ROOT))
+
+# Round 7: never leave test-side config changes on disk (see round-5 suite
+# header for the full story). atexit restores the exact bytes no matter how
+# the suite exits, so user priorities can no longer "revert to default".
+import atexit                                                   # noqa: E402
+_CFG_FILE = ROOT / 'config' / 'settings.json'
+_CFG_BYTES = _CFG_FILE.read_bytes() if _CFG_FILE.exists() else None
+if _CFG_BYTES is not None:
+    atexit.register(lambda: _CFG_FILE.write_bytes(_CFG_BYTES))
 os.environ['PYTHONIOENCODING'] = 'utf-8'
 
 LOG = ROOT / 'verify_e2e.log'

@@ -7,6 +7,17 @@ from pathlib import Path
 
 ROOT = Path(r'c:\Users\MamoTech\Desktop\imgsniper-v3-beta')
 sys.path.insert(0, str(ROOT))
+
+# Round 7: never leave test-side config changes on disk. Several suites call
+# config.set() (which SAVES immediately) while their cleanup only restores the
+# in-memory object, so every test run silently rewrote the real
+# config/settings.json -- this is what made user priorities "revert to
+# default". atexit restores the exact bytes no matter how the suite exits.
+import atexit                                                   # noqa: E402
+_CFG_FILE = ROOT / 'config' / 'settings.json'
+_CFG_BYTES = _CFG_FILE.read_bytes() if _CFG_FILE.exists() else None
+if _CFG_BYTES is not None:
+    atexit.register(lambda: _CFG_FILE.write_bytes(_CFG_BYTES))
 os.environ['PYTHONIOENCODING'] = 'utf-8'
 
 LOG_FILE = ROOT / 'test_run.log'

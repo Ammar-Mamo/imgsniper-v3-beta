@@ -13,6 +13,112 @@ significant defect, `P3` = hygiene.
 
 ---
 
+## Round 7
+
+### P1 — selection criteria were not comparable; the filename decided everything
+
+The weighted sum (weights 4/3/2/1) combined scores that lived on wildly
+different scales: filename importance used the raw 1–9 score (swings of ~6
+points) while size/resolution used absolute caps tuned for multi-MB / multi-MP
+files, so a 0.07 MB image scored 0.14/10 and a 4x pixel difference only ~0.5
+point. The configured priority order was effectively ignored — in the reported
+groups #518/#526/#572 a 360x449 file was kept over a 720x897 one because its
+name scored 8/9 vs 2/9.
+
+- Every criterion is now normalised WITHIN the group onto one comparable 0–10
+  scale: log-ratio for resolution/size (best = 10, worst = 0), proportional
+  for filename (importance × 10/9), relative for dates as before.
+- No-decision gates: spreads below 5% (resolution/size) are ties; date gaps
+  below one minute — or below a full day when a filename date is involved —
+  are ties. The midnight artifact of a filename date can no longer decide a
+  group (round 5's #14/#239 had only fixed the report wording, not the
+  scoring).
+- `build_group_scoretable()` in `file_selector.py` is now the single source of
+  truth for BOTH the selection engine and the report reasons.
+
+### P1 — report reasons were ambiguous and counter-factual
+
+`get_deletion_reason()` printed the deleted file's own attribute as a bare
+label ("Higher resolution"), which reads as a justification — and it fired on
+the first score that merely differed (`!=`), so a 1-pixel gap (736x826 vs
+735x826) was presented as a reason. Selection reasons could cite a 0.01 MB
+micro-gap against one file while a 0.08 MB sibling existed.
+
+- Reasons are computed from the same scoretable that decided and state the
+  weighted-score margin with raw values ("+2.8 pts; main advantage: filename
+  importance: 8/9 vs 2/9").
+- Genuine advantages of the deleted file are named explicitly, and
+  sub-threshold differences are labelled as such ("resolution differed only
+  within the no-decision threshold (736x826 vs 735x826)").
+- Selection reasons compare against the CLOSEST rival (highest weighted
+  total) instead of the first file whose single criterion differs.
+
+### P1 — user priorities silently reverted to the default
+
+`config.set()` saves to disk immediately, but every test suite ended by
+restoring its config backup IN MEMORY only — so after any test run the real
+`config/settings.json` kept whatever the tests had written last (including
+`priorities.order = [1, 2, 3, 4]`). That is exactly why user-set priorities
+"reverted to default after a while".
+
+- Every suite now snapshots `config/settings.json` bytes and restores them via
+  `atexit`; verified by an MD5 comparison before/after a full `run_all.py`.
+- `DEFAULT_PRIORITY_ORDER` is now `[2, 3, 1, 4]` = date → resolution → size →
+  filename (the shipped default the user asked for); the CLI "Reset to
+  Defaults" action follows it automatically.
+- `main.py` logs the loaded priority order at startup, so any future overwrite
+  is visible in `imgsniper.log` instead of a mystery.
+
+Pinned by `tests/test_fixes_round7.py`.
+
+---
+
+## Round 6
+
+### P1 — RAW/HEIC images were silently excluded from every scan (and flagged as "corrupted")
+
+`.cr2/.nef/...` were listed as supported but Pillow cannot open them; HEIC was
+not even listed. Such files either vanished from the similarity scan (debug
+line only) or — worse — the corruption scan reported them as CORRUPTED and
+offered them for deletion.
+
+- New `src/utils/helpers/image_codec.py`: central decoder with OPTIONAL codecs
+  — `rawpy` for camera RAW, `pillow-heif` for HEIC/HEIF (both now listed in
+  `requirements.txt`, imported defensively). `open_image_with_reason()`
+  distinguishes `missing_codec` (unsupported, NOT corrupted) from
+  `decode_error` (genuinely unreadable).
+- Similarity hashing, small-image analysis, resolution/size scoring, report
+  info and similarity percentages all decode through the helper; `.heic/.heif`
+  are registered in every scanning format list.
+- Excluded files are counted, printed and logged by name (`total_excluded`),
+  with an install hint when the cause is a missing codec; the corruption scan
+  reports them under `unsupported_files` instead of flagging them.
+
+Pinned by `tests/test_fixes_round6.py`.
+
+---
+
+## Round 5
+
+### #1126 — identical UI/screenshot templates grouped as "similar"
+
+pHash alone (distance 0–8 accepted) grouped WhatsApp screenshots with
+identical layout but different content. A dHash secondary guard now requires
+BOTH Hamming distances within the threshold; the user's 5-screenshot false
+group became 0 groups.
+
+### #7/#15/#18/#25/#535/#14/#239/#1124 — honest reasons, dates and warnings
+
+Score-capped byte gaps no longer masquerade as reasons; the invented
+"shorter filename" / "alphabetical order" / "Recovered/backup image" labels
+were replaced with explicit tie labels; filename dates are annotated as
+day-precision; the deletion reason uses the merged EXIF+filename dates; PIL
+"Corrupt EXIF data" warnings are routed to logging instead of stderr.
+
+Pinned by `tests/test_fixes_round5.py`.
+
+---
+
 ## Round 4
 
 ### P2-7 — `get_all_images()` ignored every filter and rescanned the recycle bin
@@ -198,7 +304,7 @@ Included in the baseline commit (tag `v3.0.0-beta`).
   undefined names) — genuine defects rather than taste — and is verified green.
   The full rule set reports several hundred pre-existing style findings, which
   are left for incremental cleanup rather than being made blocking.
-- Test coverage now stands at **5 suites / 306 assertions**, all passing,
+- Test coverage now stands at **8 suites**, all passing,
   runnable as a single gate via `python tests/run_all.py` (exit code `0`).
 
 

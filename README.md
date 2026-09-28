@@ -41,16 +41,30 @@ The CLI is available in **English** and **Arabic** (`language` in
 
 ### How the "best" image is chosen
 
-For each group of similar images, four criteria are scored and combined:
+For each group of similar images, four criteria are scored and combined. The
+**shipped default order** is date → resolution → size → filename
+(`priorities.order`; rank 1 = highest, weights 4/3/2/1):
 
-1. **Resolution** — higher pixel count wins.
-2. **File size** — larger file wins (more detail, less compression).
-3. **Date** — EXIF capture date merged with dates embedded in the filename;
+1. **Date** — EXIF capture date merged with dates embedded in the filename;
    `priorities.date_priority` selects `oldest` or `newest`. Each report line
-   shows `Date Source: exif | filename | none` so you can see which one was
-   used.
+   shows `Date Source: exif | filename | none`. A gap smaller than one minute
+   — or smaller than a day when a filename date is involved (day-level
+   precision) — counts as a tie, not a decision.
+2. **Resolution** — higher pixel count wins.
+3. **File size** — larger file wins (more detail, less compression).
 4. **Filename** — names like `copy`, `(1)` or `Recovered_*` are penalised;
    clean camera names score higher.
+
+**Round 7 — comparable scales.** Each criterion is normalised *within the
+group* onto one comparable 0–10 scale (log-ratio for resolution/size,
+proportional for filename) and a no-decision gate ignores spreads below 5%.
+Previously size/resolution used absolute caps (0.07 MB scored 0.14/10) while
+the filename scale swung ~6 points, so the filename dominated no matter what
+rank it had — reports showed a 360×449 file kept over a 720×897 one. Reports
+now state the *actual* deciding criterion, the weighted-score margin, and any
+advantage the deleted file genuinely had ("…within the no-decision
+threshold"), instead of ambiguous labels like "Higher resolution" for a
+1-pixel gap.
 
 Two guards prevent the classic failure mode of "kept a thumbnail, deleted the
 real photo":
@@ -96,7 +110,9 @@ Additional guarantees that are always on:
   are handled explicitly: emoji and Arabic output can never abort a file
   operation, and the log file is always UTF-8.
 
-Only **five** third-party packages are used at runtime:
+Five core third-party packages are used at runtime, plus two **optional**
+codec extras (HEIC + camera RAW — the app runs fine without them and reports
+every undecodable file instead of skipping it silently):
 
 | Package | Purpose |
 |---|---|
@@ -105,6 +121,8 @@ Only **five** third-party packages are used at runtime:
 | `numpy` | Hash comparison |
 | `psutil` | Memory/CPU-aware worker sizing |
 | `rich` | Menus, panels, progress bars, prompts |
+| `pillow-heif` *(optional)* | HEIC/HEIF decoding |
+| `rawpy` *(optional)* | Camera RAW decoding (.cr2/.nef/.arw/.dng/…) |
 
 ---
 
@@ -250,7 +268,7 @@ python -m ruff check --select ALL src main.py tests
 ```
 main.py                     Entry point (configures logging, then starts the CLI)
 config/settings.json        All configuration
-requirements.txt            The five runtime dependencies
+requirements.txt            Core + optional codec dependencies
 pyproject.toml              Project metadata + ruff configuration
 install_requirements.bat    Windows dependency installer
 
@@ -268,7 +286,7 @@ src/
                             logging setup, system monitoring
     reports/                Report generators and formatters
 
-tests/                      Five suites plus the unified runner (run_all.py)
+tests/                      Eight suites plus the unified runner (run_all.py)
 scripts/                    run.bat and maintenance helpers
 
 reports/                    Generated reports   (created at runtime, git-ignored)
@@ -310,8 +328,12 @@ and the tests that pin it — is in [`CHANGELOG.md`](CHANGELOG.md).
 - **لا يوجد حذف نهائي إطلاقًا.** كل ملف يُنقل إلى سلة المهملات مع الحفاظ على
   هيكل مجلداته، فيبقى قابلاً للاسترداد بايت‑ببايت.
 - جرّب أولًا بوضع `safety.dry_run_mode` على `true` واقرأ التقرير قبل أي تنفيذ.
-- الاختيار يعتمد على الدقة ثم الحجم ثم التاريخ ثم اسم الملف، مع حارسَي أمان:
-  «حدّ الجودة» يمنع الاحتفاظ بصورة مصغّرة وحذف الصورة الحقيقية، و«تحذير
+- الاختيار يعتمد افتراضيًا على: **التاريخ ثم الدقة ثم الحجم ثم الاسم** (قابل
+  للتغيير من الإعدادات، والترتيب **يُحفظ بين الجلسات**). كل معيار يُقاس داخل
+  المجموعة نفسها على مقياس موحّد 0‑10، والفروق الضئيلة (أقل من 5%، أو أقل من
+  دقيقة في التواريخ، أو أقل من يوم عند وجود تاريخ من الاسم) لا تُحتسب قرارًا —
+  والتقرير يذكر الفارق الموزون الفعلي وأي ميزة حقيقية للملف المحذوف، مع حارسَي
+  أمان: «حدّ الجودة» يمنع الاحتفاظ بصورة مصغّرة وحذف الصورة الحقيقية، و«تحذير
   التضحية بالدقة» يُظهر في التقرير إن كان الملف المُبقَى أقل دقة من غيره.
 - الواجهة والتقرير متوفران بالعربية والإنجليزية.
 
