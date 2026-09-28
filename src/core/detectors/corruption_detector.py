@@ -8,13 +8,14 @@ import logging
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from PIL import Image, ImageFile
+from PIL import ImageFile
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
 
 from ...core.config import config
 from ..i18n.i18n import i18n
 from ...utils.helpers.file_utils import get_all_images, move_to_recycle_bin, reset_session_folder, handle_protected_files_with_user_choice
+from ...utils.helpers.image_codec import open_image_with_reason
 from ...utils.helpers.scan_modes import scan_mode_manager
 from ...utils.reports.report_generator import ReportGenerator
 
@@ -23,45 +24,60 @@ ImageFile.LOAD_TRUNCATED_IMAGES = False
 
 
 def _check_image_corruption_worker(img_path: str) -> tuple:
-    """Worker function for checking image corruption with strict detection."""
+    """Worker function for checking image corruption with strict detection.
+
+    Returns ``(path, verdict)`` with verdict in {True, False, 'unsupported'}.
+    'unsupported' means the file uses a format whose OPTIONAL decoder (rawpy
+    for camera RAW, pillow-heif for HEIC/HEIF) is not installed -- round 6:
+    such files are NO LONGER branded as corrupted. The previous PIL-only
+    path could not read cr2/nef/heic at all, so every RAW or HEIC file a user
+    owned was reported as "corrupted" and offered for deletion. With the
+    codec installed those files are now genuinely verified instead.
+    """
     try:
-        # Quick ملف حجم check أول
+        # Quick file size check first
         file_size = Path(img_path).stat().st_size
         if file_size == 0:
             return img_path, True
-        
-        # Very smجميع ملفات are likely corrupted
+
+        # Very small files are likely corrupted
         if file_size < 50:
             return img_path, True
-        
-        # Try to open and verify صورة هيكل
-        with Image.open(img_path) as img:
-            img.verify()
-        
-        # Try to فعليly load and عملية the صورة بيانات
-        with Image.open(img_path) as img:
-            # جلب أساسي خصائص
+
+        # Strict decode through the central codec helper: this forces the
+        # COMPLETE pixel data to be read (Pillow / rawpy / pillow-heif), so a
+        # damaged file raises exactly as the previous verify()+load() did.
+        img, reason = open_image_with_reason(img_path)
+        if img is None:
+            if reason == 'missing_codec':
+                logging.warning(
+                    'Corruption scan: %s needs an optional decoder that is not '
+                    'installed (rawpy / pillow-heif) -- skipped, NOT treated '
+                    'as corrupted', img_path)
+                return img_path, 'unsupported'
+            return img_path, True
+
+        try:
             width, height = img.size
-            
-            # فحص for invalid بُعدs
+
+            # Check for invalid dimensions
             if width <= 0 or height <= 0:
                 return img_path, True
-            
-            # Force loading of صورة بيانات - this will fail on corrupted صورةs
-            img.load()
-            
-            # Additional check: محاولة to convert to مصفوفة for smجميع صورةs
-            # This قوةs كامل بيانات reading and will fail on corrupted بيانات
-            if width * height < 1000000:  # Only for سببably حجمd صورةs
+
+            # Additional check: convert to array for small images. This forces
+            # complete pixel data reading and fails on corrupted data.
+            if width * height < 1000000:
                 try:
                     import numpy as np
                     img_array = np.array(img)
                     if img_array.size == 0:
                         return img_path, True
                 except Exception:
-                    # If numpy fails, still عدد as corrupted
+                    # If numpy fails, still count as corrupted
                     return img_path, True
-        
+        finally:
+            img.close()
+
         return img_path, False
     except Exception:
         return img_path, True
@@ -74,7 +90,8 @@ class CorruptionDetector:
         self.supported_formats = {
             '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.tif',
             '.webp', '.ico', '.psd', '.svg', '.raw', '.cr2', '.nef',
-            '.arw', '.dng', '.orf', '.rw2', '.pef', '.srw', '.x3f'
+            '.arw', '.dng', '.orf', '.rw2', '.pef', '.srw', '.x3f',
+            '.heic', '.heif'
         }
         self.report_generator = ReportGenerator()
     
@@ -112,6 +129,7 @@ class CorruptionDetector:
             return None
         
         corrupted_files = []
+        unsupported_files = []
         
         with Progress(
             SpinnerColumn(),
@@ -139,9 +157,11 @@ class CorruptionDetector:
                     for future in as_completed(future_to_file):
                         img_path = future_to_file[future]
                         try:
-                            result_path, is_corrupted = future.result()
-                            if is_corrupted:
+                            result_path, verdict = future.result()
+                            if verdict is True:
                                 corrupted_files.append(result_path)
+                            elif verdict == 'unsupported':
+                                unsupported_files.append(result_path)
                         except Exception as e:
                             # Consider ملفات that can't be عمليةed as corrupted
                             corrupted_files.append(img_path)
@@ -153,17 +173,23 @@ class CorruptionDetector:
                 console.print(f"[yellow]⚠️ Falling back to single-threaded processing: {e}[/yellow]")
                 for img_path in all_images:
                     try:
-                        result_path, is_corrupted = _check_image_corruption_worker(img_path)
-                        if is_corrupted:
+                        result_path, verdict = _check_image_corruption_worker(img_path)
+                        if verdict is True:
                             corrupted_files.append(result_path)
+                        elif verdict == 'unsupported':
+                            unsupported_files.append(result_path)
                     except Exception:
                         corrupted_files.append(img_path)
                     progress.advance(task)
         
+        if unsupported_files:
+            console.print(f"[yellow]{i18n.get('common.unsupported_codec_skipped').format(len(unsupported_files))}[/yellow]")
+
         console.print(f"[red]{i18n.get('common.corrupted_found').format(len(corrupted_files))}[/red]")
         
         return {
             'corrupted_files': corrupted_files,
+            'unsupported_files': unsupported_files,
             'total_scanned': len(all_images),
             'operation': 'corrupted'
         }

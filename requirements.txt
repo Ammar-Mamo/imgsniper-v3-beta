@@ -1,8 +1,10 @@
 # =============================================================================
 # ImgSniper v3 — runtime dependencies
 #
-# These 5 packages are the ONLY third-party modules actually imported by the
-# codebase. Verified by scanning every top-level import across src/ and main.py:
+# The 5 packages below are the only CORE third-party modules imported by the
+# codebase; pillow-heif and rawpy are imported DEFENSIVELY (optional codec
+# extras, see the codec section below). Verified by scanning every top-level
+# import across src/ and main.py:
 #
 #     PIL (Pillow) · imagehash · numpy · psutil · rich
 #
@@ -25,6 +27,15 @@ psutil>=5.9.0,<6.0.0
 
 # CLI / terminal UI (menus, panels, progress bars, prompts)
 rich>=13.0.0,<15.0.0
+
+# Optional-but-recommended image codecs (round 6) -- RAW (.cr2/.nef/.arw/
+# .dng/...) and HEIC/.heif decoding. Both are imported DEFENSIVELY: without
+# them ImgSniper still runs, and every undecodable file is counted and
+# announced (never silently skipped, never flagged as corrupted).
+#   pillow-heif -> HEIC/HEIF support through Pillow itself
+#   rawpy       -> camera RAW decoding
+pillow-heif>=0.13.0,<2.0.0
+rawpy>=0.19.0,<1.0.0
 
 # =============================================================================
 # Development / testing (optional)

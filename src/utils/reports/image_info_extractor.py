@@ -7,9 +7,8 @@ Image information extraction utilities
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any
-from PIL import Image
-
 from ...utils.helpers.date_extractor import date_extractor
+from ...utils.helpers.image_codec import probe_image
 from ...core.config import config
 from ...core.i18n.i18n import i18n
 
@@ -30,10 +29,16 @@ class ImageInfoExtractor:
             
             # Image بُعدs and تنسيق
             try:
-                with Image.open(file_path) as img:
-                    width, height = img.size
-                    format_type = img.format
-                    mode = img.mode
+                probed = probe_image(file_path)
+                if probed:
+                    width = probed['width']
+                    height = probed['height']
+                    format_type = probed['format']
+                    mode = probed['mode']
+                else:
+                    width = height = 0
+                    format_type = "Unknown"
+                    mode = "Unknown"
             except Exception:
                 width = height = 0
                 format_type = "Unknown"

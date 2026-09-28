@@ -48,7 +48,8 @@ class DuplicateDetector:
         self.supported_formats = {
             '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.tif',
             '.webp', '.ico', '.psd', '.svg', '.raw', '.cr2', '.nef',
-            '.arw', '.dng', '.orf', '.rw2', '.pef', '.srw', '.x3f'
+            '.arw', '.dng', '.orf', '.rw2', '.pef', '.srw', '.x3f',
+            '.heic', '.heif'
         }
         self.report_generator = ReportGenerator()
     

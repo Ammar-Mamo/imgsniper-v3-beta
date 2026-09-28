@@ -9,11 +9,11 @@ from pathlib import Path
 from typing import Dict, List, Any, Optional
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
 import imagehash
-from PIL import Image
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
 
 from ..i18n.i18n import i18n
+from ...utils.helpers.image_codec import open_image
 from ...utils.helpers.scan_modes import scan_mode_manager
 
 
@@ -24,7 +24,14 @@ def _calculate_perceptual_hash_worker(img_path: str, hash_size: int = 8) -> tupl
         if Path(img_path).stat().st_size == 0:
             return img_path, None, None
             
-        with Image.open(img_path) as img:
+        # Round 6: decode through the central codec helper so camera RAW
+        # (cr2/nef/arw/dng via rawpy) and HEIC/HEIF (via pillow-heif) are
+        # hashed too. Before this, a direct PIL open raised on them and the
+        # file dropped out of the similarity scan with only a debug trail.
+        opened = open_image(img_path)
+        if opened is None:
+            return img_path, None, None
+        with opened as img:
             # Skip conإصدار if alجاهز RGB or grayمقياس for سرعة
             if img.mode not in ('RGB', 'L'):
                 img = img.convert('RGB')

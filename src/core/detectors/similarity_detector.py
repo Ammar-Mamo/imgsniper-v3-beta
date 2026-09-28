@@ -14,11 +14,16 @@ Similar image detection functionality - Main coordinator class
 # وحدة كشف وتحليل الصور - يحتوي على خوارزميات البحث والفحص
 
 
+import logging
+from pathlib import Path
 from typing import Dict, List, Any, Optional
 from rich.console import Console
 
 from ..i18n.i18n import i18n
 from ...utils.helpers.file_utils import get_all_images
+from ...utils.helpers.image_codec import (
+    codec_status, HEIF_EXTENSIONS, RAW_EXTENSIONS,
+)
 from .similarity_hash_calculator import SimilarityHashCalculator
 from .similarity_group_finder import SimilarityGroupFinder
 from ..processors.similarity_processor import SimilarityProcessor
@@ -31,7 +36,8 @@ class SimilarityDetector:
         self.supported_formats = {
             '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.tif',
             '.webp', '.ico', '.psd', '.svg', '.raw', '.cr2', '.nef',
-            '.arw', '.dng', '.orf', '.rw2', '.pef', '.srw', '.x3f'
+            '.arw', '.dng', '.orf', '.rw2', '.pef', '.srw', '.x3f',
+            '.heic', '.heif'
         }
         
         # تهيئة مكونات متخصصة
@@ -65,6 +71,10 @@ class SimilarityDetector:
         # threshold, which stops identical UI/screenshot templates with
         # different content (WhatsApp chats etc.) from grouping as similar.
         image_hashes, secondary_hashes = self.hash_calculator.calculate_image_hashes_dual(all_images, console)
+
+        # Round 6 (RAW/HEIC): report every image that hashing excluded instead
+        # of letting it vanish silently from the similarity scan.
+        excluded_count = self._report_unhashed_images(all_images, image_hashes, console)
         
         # البحث عن similar صورةs
         similar_groups = self.group_finder.find_similar_groups(
@@ -84,12 +94,47 @@ class SimilarityDetector:
         return {
             'similar_groups': similar_groups,
             'total_scanned': len(all_images),
+            'total_excluded': excluded_count,
             'total_similar': total_similar_images,
             'total_groups': total_groups,
             'operation': 'similar',
             'similarity_data': similarity_data  # Add real similarity data
         }
     
+    def _report_unhashed_images(self, all_images: List[str], image_hashes: Dict[str, Any], console: Console) -> int:
+        """Announce images that could not be hashed and were EXCLUDED (round 6).
+
+        RAW (cr2/nef/...) and HEIC files that neither Pillow nor the optional
+        codecs could decode never enter image_hashes: before this round they
+        dropped out of the similarity scan SILENTLY -- traceable only in a
+        debug log line. They are now counted, printed, logged by name (first
+        50, then a "+N more" tail), and returned so the result dict carries
+        'total_excluded': the scan summary is honest about what was NOT
+        checked and the user gets an install hint when the cause is a missing
+        optional codec.
+        """
+        missing = [p for p in all_images if p not in image_hashes]
+        if not missing:
+            return 0
+
+        names = ', '.join(Path(p).name for p in missing[:50])
+        tail = ' (+%d more)' % (len(missing) - 50) if len(missing) > 50 else ''
+        logging.warning(
+            'Similarity scan excluded %d undecodable image(s) (RAW/HEIC '
+            'without codec, or corrupt): %s%s', len(missing), names, tail)
+
+        console.print(
+            f"[yellow]{i18n.get('common.images_skipped_unreadable').format(len(missing))}[/yellow]")
+
+        # Actionable hint only when the cause is a MISSING optional codec.
+        status = codec_status()
+        extensions = {Path(p).suffix.lower() for p in missing}
+        if ((not status['raw'] and extensions & RAW_EXTENSIONS)
+                or (not status['heif'] and extensions & HEIF_EXTENSIONS)):
+            console.print(f"[yellow]{i18n.get('common.install_codec_hint')}[/yellow]")
+
+        return len(missing)
+
     def delete_similar_images(self, result: Dict[str, Any], console: Console, file_selector):
         """Delete similar images keeping the best one from each group."""
         return self.processor.delete_similar_images(result, console, file_selector)

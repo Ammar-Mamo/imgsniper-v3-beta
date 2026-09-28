@@ -6,10 +6,10 @@ import logging
 import math
 from pathlib import Path
 from typing import List, Optional, Tuple
-from PIL import Image
 
 from .config import config, DEFAULT_PRIORITY_ORDER
 from ..utils.helpers.date_extractor import date_extractor
+from ..utils.helpers.image_codec import read_dimensions
 
 
 def compute_size_score(size_mb: float) -> float:
@@ -152,15 +152,16 @@ class FileSelector:
         """Readable pixel counts for the group (unreadable files are skipped)."""
         pixels = []
         for f in files:
-            try:
-                with Image.open(f) as img:
-                    pixels.append(img.width * img.height)
-            except Exception as e:
+            dimensions = read_dimensions(f)
+            if dimensions is None:
                 # Audit P2-20: was a silent "pass". An unreadable file drops out
                 # of the pixel list, which weakens the quality-floor guard (it
                 # compares the kept image against the group's best resolution)
-                # with no indication that input data was missing.
-                logging.debug('Pixel count unreadable for %s: %s', f, e)
+                # with no indication that input data was missing. Round 6:
+                # RAW/HEIC now decode through the central codec helper.
+                logging.debug('Pixel count unreadable for %s', f)
+                continue
+            pixels.append(dimensions[0] * dimensions[1])
         return pixels
 
     def _compute_resolution_boost(self, files: List[str]) -> float:
@@ -190,24 +191,23 @@ class FileSelector:
         the explicit report warning, so a silent quality downgrade can never
         pass unnoticed.
         """
-        try:
-            with Image.open(kept_file) as img:
-                kept_px = img.width * img.height
-        except Exception:
+        kept_dims = read_dimensions(kept_file)
+        if kept_dims is None:
             return None
+        kept_px = kept_dims[0] * kept_dims[1]
 
         best_px = 0
         for f in group_files or []:
             if f == kept_file:
                 continue
-            try:
-                with Image.open(f) as img:
-                    best_px = max(best_px, img.width * img.height)
-            except Exception as e:
+            dims = read_dimensions(f)
+            if dims is None:
                 # Audit P2-20: was a silent "pass". This feeds the
                 # resolution-sacrifice warning, so an unreadable candidate can
                 # silently suppress a warning that should have been shown.
-                logging.debug('Pixel count unreadable for %s: %s', f, e)
+                logging.debug('Pixel count unreadable for %s', f)
+                continue
+            best_px = max(best_px, dims[0] * dims[1])
 
         return (kept_px, best_px) if best_px > kept_px else None
 
@@ -267,13 +267,13 @@ class FileSelector:
         Reference: 10MP (4000×2500 ≈ 10,000,000 pixels) = 10.0
         Minimum: 0.1 (for extremely small images like 10×10)
         """
-        try:
-            with Image.open(file_path) as img:
-                pixels = img.width * img.height
-                # Scale: 10MP = 10.0, 1MP = 1.0, 100×100 = 0.1
-                return compute_resolution_score(pixels)
-        except Exception:
+        dimensions = read_dimensions(file_path)
+        if dimensions is None:
             return 0.5  # Unknown resolution gets mid-low score
+        # Round 6: RAW/HEIC report their real pixel count through the codec
+        # helper instead of falling back to the unknown-resolution score.
+        # Scale: 10MP = 10.0, 1MP = 1.0, 100×100 = 0.1
+        return compute_resolution_score(dimensions[0] * dimensions[1])
 
     def _get_size_quality_score(self, file_path: str) -> float:
         """

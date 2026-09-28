@@ -19,6 +19,7 @@ A powerful tool for batch processing millions of images across all operating sys
 
 import sys
 import os
+import logging
 from pathlib import Path
 
 # Safety net: never crash on Unicode output (emoji/Arabic) when the console
@@ -37,6 +38,9 @@ sys.path.insert(0, str(Path(__file__).parent / "src"))
 from src.cli.main_cli import MainCLI
 from src.core.i18n.i18n import get_text
 from src.utils.helpers.logging_setup import setup_logging
+# Round 6: importing image_codec registers pillow-heif's HEIC/HEIF opener
+# (when installed) as a Pillow plugin for the whole process.
+from src.utils.helpers.image_codec import codec_status
 
 def main():
     """Main entry point for the application."""
@@ -47,6 +51,15 @@ def main():
     # unformatted stderr text) and imgsniper.log was never written at all.
     # setup_logging() is side-effect safe: it never raises.
     setup_logging()
+
+    # Round 6: log codec availability once per run. RAW (cr2/nef/...) and
+    # HEIC/HEIF decode through rawpy / pillow-heif when installed; otherwise
+    # such files are counted and announced as excluded (see the detectors)
+    # instead of being silently ignored.
+    _codecs = codec_status()
+    logging.getLogger('imgsniper.main').info(
+        'Optional image codecs: HEIF=%s RAW=%s', _codecs['heif'], _codecs['raw'])
+
     try:
         cli = MainCLI()
         cli.run()

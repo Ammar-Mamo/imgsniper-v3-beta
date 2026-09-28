@@ -28,6 +28,7 @@ SUITES = [
     ('test_fixes_round3.py', 'Round 3 -- P0-4/P0-8 scoring, P2-13/P2-14 dates, P2-18 language'),
     ('test_fixes_round4.py', 'Round 4 -- P2-7 filters, P2-20 logging, P2-22 config, P3-8 safety'),
     ('test_fixes_round5.py', 'Round 5 -- dHash guard (#1126), honest reasons (#7/#18/#535), date-only (#14), warning capture'),
+    ('test_fixes_round6.py', 'Round 6 -- RAW/HEIC codecs (pillow-heif/rawpy), visible skips, no false "corrupted"'),
 ]
 
 

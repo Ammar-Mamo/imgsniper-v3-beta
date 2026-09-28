@@ -5,26 +5,33 @@ Image analysis functionality for dimensions and properties
 from pathlib import Path
 from typing import List, Dict, Any
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from PIL import Image
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
 
 from .config import config
 from .i18n.i18n import i18n
 from ..utils.helpers.file_utils import get_all_images, move_to_recycle_bin, reset_session_folder, handle_protected_files_with_user_choice
+from ..utils.helpers.image_codec import read_dimensions
 from ..utils.helpers.scan_modes import scan_mode_manager
 from ..utils.reports.report_generator import ReportGenerator
 
 
 def _analyze_image_dimensions_worker(image_path: str, min_width: int, min_height: int) -> tuple:
-    """Worker function for analyzing image dimensions."""
+    """Worker function for analyzing image dimensions.
+
+    Round 6: dimensions are read through the central codec helper, so RAW
+    (cr2/nef/...) and HEIC files report their REAL size here instead of
+    surfacing as "error reading dimensions" and being skipped.
+    """
     try:
-        with Image.open(image_path) as img:
-            width, height = img.size
-            is_small = width < min_width or height < min_height
-            return image_path, (width, height, is_small)
-    except Exception as e:
+        dimensions = read_dimensions(image_path)
+    except Exception:
         return image_path, (None, None, False)
+    if dimensions is None:
+        return image_path, (None, None, False)
+    width, height = dimensions
+    is_small = width < min_width or height < min_height
+    return image_path, (width, height, is_small)
 
 
 class ImageAnalyzer:
@@ -34,7 +41,8 @@ class ImageAnalyzer:
         self.supported_formats = {
             '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.tif',
             '.webp', '.ico', '.psd', '.svg', '.raw', '.cr2', '.nef',
-            '.arw', '.dng', '.orf', '.rw2', '.pef', '.srw', '.x3f'
+            '.arw', '.dng', '.orf', '.rw2', '.pef', '.srw', '.x3f',
+            '.heic', '.heif'
         }
         self.report_generator = ReportGenerator()
     
@@ -174,10 +182,12 @@ class ImageAnalyzer:
         console.print(f"[blue]📋 {i18n.get('common.examples_small_images')}[/blue]")
         for i, img_path in enumerate(small_images[:5]):
             try:
-                with Image.open(img_path) as img:
-                    width, height = img.size
-                    size_mb = Path(img_path).stat().st_size / (1024 * 1024)
-                    console.print(f"  📷 {Path(img_path).name} - {width}x{height} ({size_mb:.2f} MB)")
+                dimensions = read_dimensions(img_path)
+                if dimensions is None:
+                    raise ValueError('unreadable')
+                width, height = dimensions
+                size_mb = Path(img_path).stat().st_size / (1024 * 1024)
+                console.print(f"  📷 {Path(img_path).name} - {width}x{height} ({size_mb:.2f} MB)")
             except Exception:
                 console.print(f"  📷 {Path(img_path).name} - {i18n.get('common.error_reading_dimensions')}")
         

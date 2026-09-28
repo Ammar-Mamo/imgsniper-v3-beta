@@ -7,13 +7,13 @@ Report formatting and text utilities
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Any, Optional
-from PIL import Image
 import imagehash
 
 from ...core.config import config
 from ...core.i18n.i18n import i18n
 from ...core.file_selector import compute_size_score, compute_resolution_score
 from ...utils.helpers.date_extractor import date_extractor
+from ...utils.helpers.image_codec import open_image
 
 
 class ReportFormatter:
@@ -288,8 +288,22 @@ class ReportFormatter:
             
             # ONLY محاولة to calculate if ملفات still exist (before deletion)
             if Path(deleted_file).exists() and Path(kept_file).exists():
-                hash1 = imagehash.phash(Image.open(deleted_file))
-                hash2 = imagehash.phash(Image.open(kept_file))
+                # Round 6: decode via the central codec helper so RAW/HEIC
+                # files get a real percentage instead of a silent None.
+                image_a = open_image(deleted_file)
+                image_b = open_image(kept_file)
+                if image_a is None or image_b is None:
+                    if image_a is not None:
+                        image_a.close()
+                    if image_b is not None:
+                        image_b.close()
+                    return None
+                try:
+                    hash1 = imagehash.phash(image_a)
+                    hash2 = imagehash.phash(image_b)
+                finally:
+                    image_a.close()
+                    image_b.close()
                 
                 # Compute the Hamming distance between the two hashes
                 hamming_distance = hash1 - hash2
