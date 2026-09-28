@@ -1,0 +1,59 @@
+🔍 Corrupted Images Deletion Report
+============================================================
+📅 Date and Time: 2026-09-26 05:17:19
+📊 Total Corrupted Files: 13
+CPU Usage: 1.8% | Memory Usage: 31.6%
+============================================================
+
+❌ Deleted Images:
+  📄 Recovered_jpg_file(279).jpg
+  📁 Path: C:\Users\MamoTech\Desktop\Graphics, Picture\JPEG Camera file\Recovered_jpg_file(279).jpg
+  📌 Reason: Corrupted or unreadable file
+  =======================================
+  📄 Recovered_jpg_file(60).jpg
+  📁 Path: C:\Users\MamoTech\Desktop\Graphics, Picture\JPEG Camera file\Recovered_jpg_file(60).jpg
+  📌 Reason: Corrupted or unreadable file
+  =======================================
+  📄 Recovered_jpg_file(569).jpg
+  📁 Path: C:\Users\MamoTech\Desktop\Graphics, Picture\JPEG Camera file\400~800\Recovered_jpg_file(569).jpg
+  📌 Reason: Corrupted or unreadable file
+  =======================================
+  📄 Recovered_jpg_file(18976).jpg
+  📁 Path: C:\Users\MamoTech\Desktop\Graphics, Picture\JPEG Graphics file\18800~19200\Recovered_jpg_file(18976).jpg
+  📌 Reason: Corrupted or unreadable file
+  =======================================
+  📄 Recovered_jpg_file(2774).jpg
+  📁 Path: C:\Users\MamoTech\Desktop\Graphics, Picture\JPEG Graphics file\2400~2800\Recovered_jpg_file(2774).jpg
+  📌 Reason: Corrupted or unreadable file
+  =======================================
+  📄 Recovered_jpg_file(3537).jpg
+  📁 Path: C:\Users\MamoTech\Desktop\Graphics, Picture\JPEG Graphics file\3200~3600\Recovered_jpg_file(3537).jpg
+  📌 Reason: Corrupted or unreadable file
+  =======================================
+  📄 Recovered_jpg_file(6120).jpg
+  📁 Path: C:\Users\MamoTech\Desktop\Graphics, Picture\JPEG Graphics file\6000~6400\Recovered_jpg_file(6120).jpg
+  📌 Reason: Corrupted or unreadable file
+  =======================================
+  📄 img_1008x549x24_028827.jpg
+  📁 Path: C:\Users\MamoTech\Desktop\Graphics, Picture\JPEG Image\img_1008x549x24_028827.jpg
+  📌 Reason: Corrupted or unreadable file
+  =======================================
+  📄 img_1080x365x24_028801.jpg
+  📁 Path: C:\Users\MamoTech\Desktop\Graphics, Picture\JPEG Image\img_1080x365x24_028801.jpg
+  📌 Reason: Corrupted or unreadable file
+  =======================================
+  📄 img_596x1071x24_028876.jpg
+  📁 Path: C:\Users\MamoTech\Desktop\Graphics, Picture\JPEG Image\img_596x1071x24_028876.jpg
+  📌 Reason: Corrupted or unreadable file
+  =======================================
+  📄 img_736x920x24_003867.jpg
+  📁 Path: C:\Users\MamoTech\Desktop\Graphics, Picture\JPEG Image\img_736x920x24_003867.jpg
+  📌 Reason: Corrupted or unreadable file
+  =======================================
+  📄 img_785x1025x24_028834.jpg
+  📁 Path: C:\Users\MamoTech\Desktop\Graphics, Picture\JPEG Image\img_785x1025x24_028834.jpg
+  📌 Reason: Corrupted or unreadable file
+  =======================================
+  📄 img_952x270x24_028806.jpg
+  📁 Path: C:\Users\MamoTech\Desktop\Graphics, Picture\JPEG Image\img_952x270x24_028806.jpg
+  📌 Reason: Corrupted or unreadable file

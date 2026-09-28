@@ -1,328 +1,94 @@
-🧩 Group #14
+🧩 Group #518
 🟢 Kept Image:
-  📄 samsung SM-J120H_20220720_164206.jpg
-  💾 Size: 0.9 MB
-  📐 Dimensions: 2560x1536
-  📅 Date Extracted: 2022-07-20 00:00:00
-  🧭 Date Source:    filename
-  🔢 Filename Importance: 6/9
-  🕒 Modified: 2022-07-20 19:42:06
-📌 Selection Reason: older extracted date (2022-07-20 00:00:00 vs 2022-07-20 16:42:06, same size and same resolution)
+  📄 img_735x826x24_001410.jpg
+  💾 Size: 0.07 MB
+  📐 Dimensions: 735x826
+  📅 Date Extracted: Unknown
+  🧭 Date Source:    none
+  🔢 Filename Importance: 8/9
+  🕒 Modified: 2026-09-23 18:43:25
+📌 Selection Reason: larger file size than img_736x826x24_005048.jpg (0.07 MB vs 0.06 MB)
 ❌ Deleted Images:
-  📄 Recovered_jpg_file(979).jpg
-  💾 Size: 0.9 MB
-  📐 Dimensions: 2560x1536
-  📅 Date Extracted: 2022-07-20 16:42:06
-  🧭 Date Source:    exif
-  🔢 Filename Importance: 2/9
-  🕒 Modified: 2026-08-01 11:30:23
-  📌 Deletion Reason: Recovered/backup image
-
-
-هنا تم حذف الصورة الصحيحة لكن السبب غريب تاريخ اقدم ؟؟؟
-مع ان التاريخ ذاته في كلا الصورتين لكن هناك فرق بسيط
-صورة Samsung تحوي التاريخ في اسمها
-وصورة recovered تحوي التاريخ في exif 
-هل تم مقارنة التاريخين في اسم الاولى و exif للثانية ؟
-لماذا سبب الاختيار تاريخ اقدم ؟
-اعطني تفسيرا واضحا لهذا السلوك في حذف الصور المتطابقة !
-
-
-🧩 Group #18
-🟢 Kept Image:
-  📄 Recovered_jpg_file(168).jpg
-  💾 Size: 0.09 MB
-  📐 Dimensions: 810x1080
+  📄 Recovered_jpg_file(15550).jpg
+  💾 Size: 0.08 MB
+  📐 Dimensions: 736x826
   📅 Date Extracted: Unknown
   🧭 Date Source:    none
   🔢 Filename Importance: 2/9
-  🕒 Modified: 2026-08-01 11:40:12
-📌 Selection Reason: shorter filename
-❌ Deleted Images:
-  📄 Recovered_jpg_file(4872).jpg
-  💾 Size: 0.09 MB
-  📐 Dimensions: 810x1080
-  📅 Date Extracted: Unknown
-  🧭 Date Source:    none
-  🔢 Filename Importance: 2/9
-  🕒 Modified: 2026-08-01 11:35:40
-  📌 Deletion Reason: Recovered/backup image
-
-
-ماذا يعني اسم ملف اقصر ؟
-وهل هذه اولوية لابقاء الملف ؟
-ماذا سيحدث اذا كان الاسم مثلا kkk.jpg او 202.jpg 
-والصورة الاخرى اسمها 20221023-220543.jpg
-هل سيتم حذف الصورة اللتي تحوي تاريخ لان اسم الصورة الاولى اقصر ؟
-
-
-
-🧩 Group #25
-🟢 Kept Image:
-  📄 Recovered_jpg_file(388).jpg
+  🕒 Modified: 2026-08-01 11:38:01
+  📌 Deletion Reason: Higher resolution
+  =======================================
+  📄 img_736x826x24_005048.jpg
   💾 Size: 0.06 MB
-  📐 Dimensions: 540x1080
+  📐 Dimensions: 736x826
+  📅 Date Extracted: Unknown
+  🧭 Date Source:    none
+  🔢 Filename Importance: 8/9
+  🕒 Modified: 2026-09-23 18:43:42
+  📌 Deletion Reason: Higher resolution
+
+شو هاد السلوك ليش هيك صار ؟؟
+
+
+
+🧩 Group #526
+🟢 Kept Image:
+  📄 img_736x883x24_003541.jpg
+  💾 Size: 0.09 MB
+  📐 Dimensions: 736x883
+  📅 Date Extracted: Unknown
+  🧭 Date Source:    none
+  🔢 Filename Importance: 8/9
+  🕒 Modified: 2026-09-23 18:43:36
+📌 Selection Reason: better filename importance (8/9 vs 2/9, same resolution)
+❌ Deleted Images:
+  📄 Recovered_jpg_file(15779).jpg
+  💾 Size: 0.1 MB
+  📐 Dimensions: 736x883
   📅 Date Extracted: Unknown
   🧭 Date Source:    none
   🔢 Filename Importance: 2/9
-  🕒 Modified: 2026-08-01 11:40:16
-📌 Selection Reason: selected based on alphabetical order
+  🕒 Modified: 2026-08-01 11:38:08
+  📌 Deletion Reason: Larger file size
+
+وشو سبب هاد السلوك كمان مرق عليي كتير نتائج كانت يتم الاحتفاظ بملف Recovered ويتم حذف ملف باسم مشابه لهذا img_736x883x24_003541.jpg ولكن لاسباب منطقية وهي الدقة والحجم مثلا
+
+
+🧩 Group #572
+🟢 Kept Image:
+  📄 img_360x449x24_026673.jpg
+  💾 Size: 0.02 MB
+  📐 Dimensions: 360x449
+  📅 Date Extracted: Unknown
+  🧭 Date Source:    none
+  🔢 Filename Importance: 8/9
+  🕒 Modified: 2026-09-23 18:53:36
+📌 Selection Reason: better filename importance (8/9 vs 2/9)
 ❌ Deleted Images:
-  📄 Recovered_jpg_file(416).jpg
+  📄 Recovered_jpg_file(16860).jpg
   💾 Size: 0.06 MB
-  📐 Dimensions: 540x1080
+  📐 Dimensions: 720x897
   📅 Date Extracted: Unknown
   🧭 Date Source:    none
   🔢 Filename Importance: 2/9
-  🕒 Modified: 2026-08-01 11:34:42
-  📌 Deletion Reason: Recovered/backup image
+  🕒 Modified: 2026-08-01 11:38:25
+  📌 Deletion Reason: Higher resolution
 
-ممكن شرح ايضا لهذا السلوك ؟
-مرة بيكون السبب اسم اقصر ومرة بسبب ترتيب الابجدية
-اشرح سبب السلوك هذا
+وهون ليش هيك صار علما اني غيرت الأولويات ليصير 
+1 التاريخ
+2 الدقة والابعاد
+3 الحجم
+4 الاسم
+بس بهاد التقرير فضل الاسم على الحجم والابعاد ليش هيك ؟
 
+في شي غريب إضافي 
+هلق فتحت البرنامج بعد فترة لقيت الأولويات رجعوا تلقائيا للافتراضي تبعهن
+شو السبب
+خلي الأولويات يتم حفظها من اخر مرة المستخدم اشتغل عالبرنامج مو كل مرة المستخدم بدو يفتح البرنامج بدو يعيد تظبيط الأولويات
+وخلي الأوليات الافتراضية للبرنامج 
+1 التاريخ
+2 الدقة والابعاد
+3 الحجم
+4 الاسم
 
-⠦ 🔍 Comparing images for similarity... ━━━━━━━━━━━━━━━━╸━━━━━━━━━━━━━━━━━━━━━━━  42% 20500/48993 0:17:06
-⠏ 🔍 Comparing images for similarity... ━━━━━━━━━━━━━━━━━━━━╸━━━━━━━━━━━━━━━━━━━  52% 25500/48993 0:19:15
-⠼ 🔍 Comparing images for similarity... ━━━━━━━━━━━━━━━━━━━━╸━━━━━━━━━━━━━━━━━━━  52% 25500/48993 0:19:30
-⠇ 🔍 Comparing images for similarity... ━━━━━━━━━━━━━━━━━━━━╸━━━━━━━━━━━━━━━━━━━  52% 25500/48993 0:19:47
-⠹ 🔍 Comparing images for similarity... ━━━━━━━━━━━━━━━━━━━━━━━╺━━━━━━━━━━━━━━━━  58% 28500/48993 0:19:54
-
-
-
-لماذا هذا العداد يتقدم كل عدد كبير من الصور مرة واحدة علما ان التوقيت يعمل بشكل جيد؟
-هذا لا يبدو عداد حي يظهر النتيجة لكل صورة على حدا؟
-اشرح لي سبب هذا وتفاصيل اخرى قد تكون مهمة؟
-
-
-🧩 Group #239
-🟢 Kept Image:
-  📄 img_1575x2205x24_20071218_141707.jpg
-  💾 Size: 2.61 MB
-  📐 Dimensions: 1575x2205
-  📅 Date Extracted: 2007-12-18 00:00:00
-  🧭 Date Source:    filename
-  🔢 Filename Importance: 8/9
-  🕒 Modified: 2007-12-18 17:17:07
-📌 Selection Reason: older extracted date (2007-12-18 00:00:00 vs 2007-12-18 14:17:07, same size and same resolution)
-❌ Deleted Images:
-  📄 Recovered_jpg_file(2092).jpg
-  💾 Size: 2.61 MB
-  📐 Dimensions: 1575x2205
-  📅 Date Extracted: 2007-12-18 14:17:07
-  🧭 Date Source:    exif
-  🔢 Filename Importance: 2/9
-  🕒 Modified: 2026-08-01 11:35:00
-  📌 Deletion Reason: Recovered/backup image
-
-هنا قد قام البرنامج بالاختيار الصحيح
-لكن
-مجددا الصورتين تحويان نفس التاريخ بالضبط 
-لماذا اقول انه اختار الخيار الصحيح
-لان اسم الصورة اللتي بقيت افضل من اسم الصورة الاخرى وهو recovered 
-لكن سبب الاختيار لم يكن الاسم الافضل لكن التاريخ الاقدم رغم انهما يحتويان نفس التاريخ لكن على ما يبدو مقارنات التاريخ تتم فقط من ملفات exif 
-
-اعطيت وجهة نظري لكن لا اعلم ان كانت صحيحة ام خاطئة
-يرجى شرح هذا السلوك بشكل جيد كي افهمه
-
-
-✅ Similarity scan complete: 48993 images processed, 2203 similar images found in 1673 groups
-
-⚠️ Do you want to confirm deletion?
-Do you want to confirm deletion? [y/n]: y
-C:\Users\MamoTech\AppData\Local\Programs\Python\Python310\lib\site-packages\PIL\TiffImagePlugin.py:950: UserWarning: Corrupt EXIF data.  Expecting to read 12 bytes but only got 3.
-  warnings.warn(str(msg))
-
-ما هذه الرسالة ؟
-يرجى الشرح ايضا
-
-
-🧩 Group #535
-🟢 Kept Image:
-  📄 img_471x1020x24_029100.jpg
-  💾 Size: 0.04 MB
-  📐 Dimensions: 471x1020
-  📅 Date Extracted: Unknown
-  🧭 Date Source:    none
-  🔢 Filename Importance: 8/9
-  🕒 Modified: 2026-09-23 19:30:15
-📌 Selection Reason: selected based on alphabetical order
-❌ Deleted Images:
-  📄 img_471x1020x24_029122.jpg
-  💾 Size: 0.04 MB
-  📐 Dimensions: 471x1020
-  📅 Date Extracted: Unknown
-  🧭 Date Source:    none
-  🔢 Filename Importance: 8/9
-  🕒 Modified: 2026-09-23 19:30:15
-  📌 Deletion Reason: Recovered/backup image
-
-كيف تم الحذف هون والسبب انو ملف مستعاد او نسخة احتياطية مع انو الاسم ليس recovered او backup 
-شو سبب هالسلوك هاد ؟
-
-
-🧩 Group #7
-🟢 Kept Image:
-  📄 Recovered_jpg_file(1216).jpg
-  💾 Size: 7.76 MB
-  📐 Dimensions: 6240x4160
-  📅 Date Extracted: 2024-07-04 21:50:51
-  🧭 Date Source:    exif
-  🔢 Filename Importance: 2/9
-  🕒 Modified: 2026-08-01 11:30:27
-📌 Selection Reason: has extracted date (2024-07-04 21:50:51 vs Unknown)
-❌ Deleted Images:
-  📄 Recovered_jpg_file(1218).jpg
-  💾 Size: 7.77 MB
-  📐 Dimensions: 6240x4160
-  📅 Date Extracted: 2024-07-04 21:50:51
-  🧭 Date Source:    exif
-  🔢 Filename Importance: 2/9
-  🕒 Modified: 2026-08-01 11:30:30
-  📌 Deletion Reason: Larger file size
-
-شو هالسلوك هاد ؟
-معقولة لانو الصورة اكبر بالحجم بيتم حذفها ؟
-مو لحنا اساسا عم نشتغل كل هالشغل مشان يتم الاحتفاظ بافضل صورة بجميع المقاييس 
-ليش هيك صار ممكن شرح ؟
-
-
-🧩 Group #15
-🟢 Kept Image:
-  📄 Recovered_jpg_file(1254).jpg
-  💾 Size: 4.63 MB
-  📐 Dimensions: 4000x3000
-  📅 Date Extracted: 2023-05-21 19:30:28
-  🧭 Date Source:    exif
-  🔢 Filename Importance: 2/9
-  🕒 Modified: 2026-08-01 11:30:53
-📌 Selection Reason: older extracted date (2023-05-21 19:30:28 vs 2023-05-21 19:30:29, same resolution)
-❌ Deleted Images:
-  📄 Recovered_jpg_file(1255).jpg
-  💾 Size: 4.31 MB
-  📐 Dimensions: 4000x3000
-  📅 Date Extracted: 2023-05-21 19:30:29
-  🧭 Date Source:    exif
-  🔢 Filename Importance: 2/9
-  🕒 Modified: 2026-08-01 11:30:53
-  📌 Deletion Reason: Smaller file size
-
-
-بنفس الوقت كمان تم حذف صورة هون بسبب الحجم الاصغر وهاد الشي منطقي ولكن
-كيف ممكن البرنامج يتصرف هيك بشكل معاكس بنفس العملية ؟؟
-مرة يحذف لانو حجم ملف اكبر ومرة يحذف لانو حجم ملف اصغر ؟؟
-غريب
-هات شرح
-
-
-
-🧩 Group #1124
-🟢 Kept Image:
-  📄 img_1080x2340x24_020288.jpg
-  💾 Size: 1.36 MB
-  📐 Dimensions: 1080x2340
-  📅 Date Extracted: 2025-04-25 04:21:34
-  🧭 Date Source:    exif
-  🔢 Filename Importance: 8/9
-  🕒 Modified: 2026-09-23 18:50:43
-📌 Selection Reason: older extracted date (2025-04-25 04:21:34 vs 2025-05-25 23:32:21, same size and same resolution)
-❌ Deleted Images:
-  📄 img_1080x2340x24_020541.jpg
-  💾 Size: 1.36 MB
-  📐 Dimensions: 1080x2340
-  📅 Date Extracted: 2025-05-25 23:32:21
-  🧭 Date Source:    exif
-  🔢 Filename Importance: 8/9
-  🕒 Modified: 2026-09-23 18:50:46
-  📌 Deletion Reason: Recovered/backup image
-  =======================================
-  📄 img_1080x2340x24_021957.jpg
-  💾 Size: 1.36 MB
-  📐 Dimensions: 1080x2340
-  📅 Date Extracted: 2025-07-17 09:38:48
-  🧭 Date Source:    exif
-  🔢 Filename Importance: 8/9
-  🕒 Modified: 2026-09-23 18:51:06
-  📌 Deletion Reason: Larger file size
-  =======================================
-  📄 img_1080x2340x24_022768.jpg
-  💾 Size: 1.36 MB
-  📐 Dimensions: 1080x2340
-  📅 Date Extracted: 2026-07-16 01:54:09
-  🧭 Date Source:    exif
-  🔢 Filename Importance: 8/9
-  🕒 Modified: 2026-09-23 18:51:18
-  📌 Deletion Reason: Recovered/backup image
-
-
-
-هون انا ضعت شو سبب هالسلوك هاد بيتشاركوا باهمية الاسم بس التاريخ جيد انو تم اختيار اقدم تاريخ بس شو سبب حذف الباقيين ؟
-===================================================================================================================================
-خطر خطر
-
-🧩 Group #1126
-🟢 Kept Image:
-  📄 img_1080x2340x24_025121.jpg
-  💾 Size: 0.7 MB
-  📐 Dimensions: 1080x2340
-  📅 Date Extracted: 2026-07-07 00:29:38
-  🧭 Date Source:    exif
-  🔢 Filename Importance: 8/9
-  🕒 Modified: 2026-09-23 18:51:50
-📌 Selection Reason: older extracted date (2026-07-07 00:29:38 vs 2026-07-07 05:54:43, same resolution)
-❌ Deleted Images:
-  📄 img_1080x2340x24_020389.jpg
-  💾 Size: 0.71 MB
-  📐 Dimensions: 1080x2340
-  📅 Date Extracted: 2026-07-07 05:54:43
-  🧭 Date Source:    exif
-  🔢 Filename Importance: 8/9
-  🕒 Modified: 2026-09-23 18:50:44
-  📌 Deletion Reason: Larger file size
-  =======================================
-  📄 img_1080x2340x24_020531.jpg
-  💾 Size: 0.7 MB
-  📐 Dimensions: 1080x2340
-  📅 Date Extracted: 2026-07-07 00:35:44
-  🧭 Date Source:    exif
-  🔢 Filename Importance: 8/9
-  🕒 Modified: 2026-09-23 18:50:46
-  📌 Deletion Reason: Smaller file size
-  =======================================
-  📄 img_1080x2340x24_020532.jpg
-  💾 Size: 0.71 MB
-  📐 Dimensions: 1080x2340
-  📅 Date Extracted: 2026-07-07 02:32:49
-  🧭 Date Source:    exif
-  🔢 Filename Importance: 8/9
-  🕒 Modified: 2026-09-23 18:50:46
-  📌 Deletion Reason: Larger file size
-  =======================================
-  📄 img_1080x2340x24_020533.jpg
-  💾 Size: 0.72 MB
-  📐 Dimensions: 1080x2340
-  📅 Date Extracted: 2026-07-07 06:02:01
-  🧭 Date Source:    exif
-  🔢 Filename Importance: 8/9
-  🕒 Modified: 2026-09-23 18:50:46
-  📌 Deletion Reason: Larger file size
-
-طبعا القائمة تطووووول جدا هناك الكثير من النتائج هكذا
-هنا تم حذف الكثييير من الصور وابقاء واحدة وعندما تحققت من الصور لقيتهم صور محادثات لكن كل وحدة مختلفة عن الثانية 
-محادثات واتساب
-وهاد الخيار تبع الصور المتشابهة وليس المتطابقة 
-بس معقوووول يحذف كلشي محادثات على اساس انهم متشابهين ؟؟؟
-شوف الصور رح ابعتلكياهم
-يرجى شرح المشكلة ولماذا حدث هذا؟
-يرجى فحص التقارير خصوصا similar لاستكشاف المشاكل والاخطاء اللتي ربما قد وقعنا بها
-
-
-يرجى ازالة
-7 - Auto Face Detection & Blur Selected Face in All Photos
-وبعدها تعديل
-6 - Auto Face Detection & Delete All Photos of Selected Face
-لتصبح Auto Face Detection Tool (FaceFinder Pro)
-
-
-
-
+بهالشكل هاد واي تغيير من المستخدم يتم حفظه لكن ان أراد المستخدم إعادة الأولويات للافتراضي يعودون كما كانوا 
