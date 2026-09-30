@@ -19,18 +19,33 @@ from ..utils.helpers.file_utils import get_all_images
 # ---------------------------------------------------------------------------
 # Extension tables
 # ---------------------------------------------------------------------------
-# A "type" groups the extensions that are the SAME artifact for the user:
-# Word = .doc + .docx together, PowerPoint = .ppt + .pptx, and so on.
-WORD_EXTENSIONS = ['.doc', '.docx']
-EXCEL_EXTENSIONS = ['.xls', '.xlsx']
-POWERPOINT_EXTENSIONS = ['.ppt', '.pptx']
-PDF_EXTENSIONS = ['.pdf']
+# Round 10: a "type" covers the whole FAMILY, not just the two modern
+# extensions. Macro-enabled (docm/xlsm/pptm), templates (dotx/xltx/potx),
+# show and legacy variants (pps/ppsx/dot/xlt), the WPS Office equivalents
+# (wps/et/dps), RTF, and the OpenDocument twins (odt/ods/odp).
+#
+# Deliberately NOT listed: .pst / .ost (Outlook mailbox DATABASES -- multi-GB
+# single files, where one duplicate pair means reading tens of GB) and .dwg
+# (CAD drawings, not an office document). Both remain reachable through the
+# "Other Files" entry, which accepts any extension the user types.
+WORD_EXTENSIONS = ['.doc', '.docx', '.docm', '.dot', '.dotx', '.dotm', '.rtf', '.odt', '.wps']
+EXCEL_EXTENSIONS = ['.xls', '.xlsx', '.xlsm', '.xlt', '.xltx', '.ods', '.csv', '.tsv', '.et']
+POWERPOINT_EXTENSIONS = ['.ppt', '.pptx', '.pptm', '.pps', '.ppsx', '.pot', '.potx', '.odp', '.dps']
+# PDF and XPS are the same artifact for the user: a fixed-layout document.
+PDF_EXTENSIONS = ['.pdf', '.xps', '.oxps']
+# Everything else an office suite produces: drawing/database files (Visio,
+# Publisher, OneNote, Access, Project), Outlook items (.msg/.eml), the
+# OpenDocument graphics/formula/database formats and the Apple iWork trio.
+OTHER_OFFICE_EXTENSIONS = ['.vsd', '.vsdx', '.pub', '.one', '.accdb', '.mdb', '.mpp',
+                           '.msg', '.eml', '.odg', '.odf', '.odb',
+                           '.pages', '.numbers', '.key']
 
 OFFICE_TYPES: Dict[str, List[str]] = {
     'word': WORD_EXTENSIONS,
     'excel': EXCEL_EXTENSIONS,
     'powerpoint': POWERPOINT_EXTENSIONS,
     'pdf': PDF_EXTENSIONS,
+    'office_other': OTHER_OFFICE_EXTENSIONS,
 }
 
 ARCHIVE_TYPES: Dict[str, List[str]] = {
@@ -80,6 +95,7 @@ SECTIONS: Dict[str, Dict[str, object]] = {
             ('excel', EXCEL_EXTENSIONS, 'office_operations.excel'),
             ('powerpoint', POWERPOINT_EXTENSIONS, 'office_operations.powerpoint'),
             ('pdf', PDF_EXTENSIONS, 'office_operations.pdf'),
+            ('office_other', OTHER_OFFICE_EXTENSIONS, 'office_operations.other_formats'),
             ('all', OFFICE_EXTENSIONS, 'office_operations.all'),
         ],
     },

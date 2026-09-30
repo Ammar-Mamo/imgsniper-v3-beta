@@ -55,10 +55,11 @@ ENGLISH_TRANSLATIONS = {
     "office_operations": {
         "found_files": "📄 Found {} office files",
         "no_duplicates_found": "✅ No duplicate office files found",
-        "word": "Delete Duplicate Word Documents (sha256)",
-        "excel": "Delete Duplicate Excel Files (sha256)",
-        "powerpoint": "Delete Duplicate PowerPoint Files (sha256)",
-        "pdf": "Delete Duplicate PDF Files (sha256)",
+        "word": "Delete Duplicate Word Documents - doc, docx, rtf, odt, wps (sha256)",
+        "excel": "Delete Duplicate Excel Files - xls, xlsx, ods, csv, et (sha256)",
+        "powerpoint": "Delete Duplicate PowerPoint Files - ppt, pptx, odp, dps (sha256)",
+        "pdf": "Delete Duplicate PDF / XPS Files - pdf, xps, oxps (sha256)",
+        "other_formats": "Delete Duplicate Other Office Files - Visio, Publisher, OneNote, Access, Project, Outlook, iWork (sha256)",
         "all": "Delete Duplicate Office Files - all types (sha256)",
         "back": "Back",
         "exit": "Exit"

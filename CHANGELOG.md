@@ -13,6 +13,53 @@ significant defect, `P3` = hygiene.
 
 ---
 
+## Round 10
+
+### Feature — the Office section now covers the whole office family, not four extensions
+
+Round 9 shipped the office section with the mainstream minimum: `.doc .docx`,
+`.xls .xlsx`, `.ppt .pptx` and `.pdf`. The user asked where the rest of the
+office formats were — and "type them into Other Files one by one" is not a
+menu, so the families are now complete.
+
+- **Word** covers the whole family: `.doc .docx .docm .dot .dotx .dotm .rtf
+  .odt .wps` (legacy + macro-enabled + templates + RTF + OpenDocument + WPS).
+- **Excel**: `.xls .xlsx .xlsm .xlt .xltx .ods .csv .tsv .et`.
+- **PowerPoint**: `.ppt .pptx .pptm .pps .ppsx .pot .potx .odp .dps` (slide
+  shows and templates included).
+- The PDF entry became **PDF / XPS** (`.pdf .xps .oxps`): both are fixed-layout
+  documents — the same artifact for the user.
+- **New fifth entry, "Other Office Files"**: `.vsd .vsdx .pub .one .accdb .mdb
+  .mpp .msg .eml .odg .odf .odb .pages .numbers .key` — Visio, Publisher,
+  OneNote, Access, Project, Outlook items, OpenDocument graphics/formula/
+  database and Apple iWork.
+- **45 office extensions in total**, still matched PER EXTENSION. The option
+  lists are disjoint, so no file can be claimed by two menu entries and two
+  different formats are never treated as the same artifact. (`.ods` and `.xls`
+  with identical bytes stay two files, exactly like `.doc` and `.docx`.)
+- **Deliberately excluded**, with the reason recorded in the registry itself:
+  `.pst` / `.ost` (Outlook mailbox DATABASES — one duplicate pair can mean
+  reading tens of GB) and `.dwg` (CAD, not an office document). Both remain
+  reachable through "Other Files", which accepts any extension the user types.
+- The menu labels in BOTH languages now name the extensions they cover, so the
+  choice is not a guess: `Delete Duplicate Excel Files - xls, xlsx, ods, csv,
+  et (sha256)`.
+
+Nothing about the engine changed: same `stat()` size pre-filter, same SHA-256
+in 1 MiB blocks, same `(extension, sha256)` keys, same report writer and the
+same per-section recycle-bin folders.
+
+### Tests
+
+`tests/test_fixes_round10.py` (46 assertions): the exact extension tables, the
+menu wiring (entry 5 → `office_other`, the combined entry still last), overlap
+detection between option lists, well-formed extensions, the i18n labels in both
+languages naming their formats, scans proving `.ods`/`.xls` with identical
+bytes are NOT grouped, a `.pages` pair deleted while identical `.vsd`/`.vsdx`
+stay untouched, the report prefix/title and the absence of a "0x0" line, and
+the settings filter (`min_file_size_bytes`) still applying to section scans.
+`tests/run_all.py` now runs **11 suites**.
+
 ## Round 9
 
 ### Feature — the Office, Archives and Other sections now do real work

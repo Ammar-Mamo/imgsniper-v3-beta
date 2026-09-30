@@ -55,10 +55,11 @@ ARABIC_TRANSLATIONS = {
     "office_operations": {
         "found_files": "📄 تم العثور على {} ملف أوفيس",
         "no_duplicates_found": "✅ لم يتم العثور على ملفات أوفيس متطابقة",
-        "word": "حذف مستندات Word المتطابقة sha256",
-        "excel": "حذف ملفات Excel المتطابقة sha256",
-        "powerpoint": "حذف ملفات PowerPoint المتطابقة sha256",
-        "pdf": "حذف ملفات PDF المتطابقة sha256",
+        "word": "حذف مستندات Word المتطابقة - doc, docx, rtf, odt, wps sha256",
+        "excel": "حذف ملفات Excel المتطابقة - xls, xlsx, ods, csv, et sha256",
+        "powerpoint": "حذف ملفات PowerPoint المتطابقة - ppt, pptx, odp, dps sha256",
+        "pdf": "حذف ملفات PDF / XPS المتطابقة - pdf, xps, oxps sha256",
+        "other_formats": "حذف ملفات أوفيس أخرى متطابقة - Visio وPublisher وOneNote وAccess وProject وiWork sha256",
         "all": "حذف ملفات الأوفيس المتطابقة - كل الأنواع sha256",
         "back": "العودة",
         "exit": "خروج"

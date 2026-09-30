@@ -46,7 +46,7 @@ The CLI is available in **English** and **Arabic** (`language` in
 |---|---|---|
 | **1 — Images** | duplicates, similar, corrupted, small | The image extensions in the scan filters |
 | **2 — Videos** | *coming soon* | Postponed on purpose — video needs its own metadata source (duration/resolution/codec) and its own performance profile |
-| **3 — Office** | Word, Excel, PowerPoint, PDF, all office types | `.doc`/`.docx` counted as **one** type, `.xls`/`.xlsx`, `.ppt`/`.pptx`, `.pdf` |
+| **3 — Office** | Word, Excel, PowerPoint, PDF/XPS, other office formats, all office types | Whole **families**, not just the modern extension: Word `.doc .docx .docm .dot .dotx .dotm .rtf .odt .wps` — Excel `.xls .xlsx .xlsm .xlt .xltx .ods .csv .tsv .et` — PowerPoint `.ppt .pptx .pptm .pps .ppsx .pot .potx .odp .dps` — PDF/XPS `.pdf .xps .oxps` — other `.vsd .vsdx .pub .one .accdb .mdb .mpp .msg .eml .odg .odf .odb .pages .numbers .key` (45 extensions in total) |
 | **4 — Archives** | ZIP, RAR, 7Z, TAR, GZ/TGZ, BZ2, XZ, all archives | `.zip .rar .7z .tar .gz/.tgz .bz2 .xz` |
 | **5 — Other files** | custom extensions | You type them (`iso, apk` → `.iso, .apk`); an answer with no valid extension refuses to scan instead of reporting "no duplicates found" for a scan that never covered anything |
 | **6 — Settings** | — | Program-wide configuration (Round 8 moved it out of the images section) |
@@ -299,8 +299,9 @@ CI gate.
 | `test_fixes_round6.py` | Report layout, reason wording, path handling | 55 |
 | `test_fixes_round7.py` | Comparable 0–10 criteria scales, no-decision gate, config restore | 22 |
 | `test_fixes_round8.py` | Alphabetical tie-break, plain reasons, full paths, main-menu settings | 49 |
-| `test_fixes_round9.py` | Office/archives/other SHA-256 duplicates, per-extension matching, section menus and reports | 91 |
-| | **Total** | **568** |
+| `test_fixes_round9.py` | Office/archives/other SHA-256 duplicates, per-extension matching, section menus and reports | 93 |
+| `test_fixes_round10.py` | Full office format coverage: macro/template/OpenDocument/WPS families, PDF+XPS, Visio/Publisher/Access/iWork entry | 46 |
+| | **Total** | **616** |
 
 Per-suite logs are written to the project root (`test_run.log`,
 `verify_e2e.log`, `test_run_round<N>.log`). All are git-ignored.
@@ -356,7 +357,7 @@ src/
                             logging setup, system monitoring
     reports/                Report generators and formatters
 
-tests/                      Ten suites plus the unified runner (run_all.py)
+tests/                      Eleven suites plus the unified runner (run_all.py)
 scripts/                    run.bat and maintenance helpers
 
 reports/                    Generated reports   (created at runtime, git-ignored)
@@ -416,12 +417,14 @@ and the tests that pin it — is in [`CHANGELOG.md`](CHANGELOG.md).
   أمان: «حدّ الجودة» يمنع الاحتفاظ بصورة مصغّرة وحذف الصورة الحقيقية، و«تحذير
   التضحية بالدقة» يُظهر في التقرير إن كان الملف المُبقَى أقل دقة من غيره.
 - الواجهة والتقرير متوفران بالعربية والإنجليزية.
-- أقسام **الأوفيس** (Word وExcel وPowerPoint وPDF) و**الملفات المضغوطة**
-  (zip, rar, 7z, tar, gz, bz2, xz) و**ملفات أخرى** (تكتب امتداداتها بنفسك) أصبحت
-  تعمل: كشف التكرار بالمحتوى (SHA‑256) بعد فرز أولي بالحجم، ولا تُقارن إلا
-  الملفات المتطابقة في الامتداد، والمكرر يُنقل إلى `recycle-bin/duplicates-office`
-  (أو `duplicates-archives` / `duplicates-other`) مع تقرير خاص بكل قسم. قسم
-  **الفيديو** ما زال «قريبًا» بصراحة، ولم يُنفَّذ بعد.
+- أقسام **الأوفيس** بعائلاتها الكاملة: Word (doc, docx, docm, dot, dotx, dotm, rtf, odt, wps)
+  وExcel (xls, xlsx, xlsm, xlt, xltx, ods, csv, tsv, et) وPowerPoint (ppt, pptx, pptm, pps,
+  ppsx, pot, potx, odp, dps) وPDF/XPS (pdf, xps, oxps) وخيار خامس لما تبقّى (Visio وPublisher
+  وOneNote وAccess وProject وiWork وOpenDocument) — 45 امتداداً في المجموع. و**الملفات
+  المضغوطة** (zip, rar, 7z, tar, gz, bz2, xz) و**ملفات أخرى** (تكتب امتداداتها بنفسك):
+  كشف التكرار بالمحتوى (SHA‑256) بعد فرز أولي بالحجم، ولا تُقارن إلا الملفات المتطابقة في
+  الامتداد، والمكرر يُنقل إلى `recycle-bin/duplicates-office` (أو `duplicates-archives` /
+  `duplicates-other`) مع تقرير خاص بكل قسم. قسم **الفيديو** ما زال «قريبًا» بصراحة.
 
 **التشغيل:** `python main.py` — **التثبيت:** `install_requirements.bat` —
 **الاختبارات:** `python tests/run_all.py`

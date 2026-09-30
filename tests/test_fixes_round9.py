@@ -70,7 +70,9 @@ from src.core.config import config                                   # noqa: E40
 from src.core.i18n.i18n import i18n                                  # noqa: E402
 from src.core.file_categories import (                               # noqa: E402
     SECTIONS, OFFICE_TYPES, ARCHIVE_TYPES, OFFICE_EXTENSIONS,
-    ARCHIVE_EXTENSIONS, normalize_extensions, collect_files)
+    ARCHIVE_EXTENSIONS, normalize_extensions, collect_files, all_extensions,
+    WORD_EXTENSIONS, EXCEL_EXTENSIONS, POWERPOINT_EXTENSIONS,
+    PDF_EXTENSIONS, OTHER_OFFICE_EXTENSIONS)
 from src.core.detectors.duplicate_detector import DuplicateDetector  # noqa: E402
 from src.core.file_selector import FileSelector                      # noqa: E402
 from src.utils.helpers.date_extractor import date_extractor          # noqa: E402
@@ -124,22 +126,34 @@ P('every CLI section is registered',
   set(SECTIONS) == {'office', 'archives', 'other'}, sorted(SECTIONS))
 
 office_ids = [option[0] for option in SECTIONS['office']['options']]
+# Round 10 expanded the office families and added the "office_other" entry.
 P('office menu offers every type plus one combined entry',
-  office_ids == ['word', 'excel', 'powerpoint', 'pdf', 'all'], office_ids)
-P('Word = .doc + .docx in ONE option (one type, not one option per extension)',
-  SECTIONS['office']['options'][0][1] == ['.doc', '.docx'],
+  office_ids == ['word', 'excel', 'powerpoint', 'pdf', 'office_other', 'all'], office_ids)
+P('Word is ONE option covering the whole Word family (doc/docx/docm/dotx/rtf/odt/wps)',
+  SECTIONS['office']['options'][0][1] == WORD_EXTENSIONS
+  and {'.doc', '.docx', '.docm', '.dotx', '.rtf', '.odt', '.wps'} <= set(WORD_EXTENSIONS),
   SECTIONS['office']['options'][0][1])
-P('Excel and PowerPoint group their own extensions the same way',
-  SECTIONS['office']['options'][1][1] == ['.xls', '.xlsx']
-  and SECTIONS['office']['options'][2][1] == ['.ppt', '.pptx'])
-P('PDF lives inside the office section',
-  ['.pdf'] in [option[1] for option in SECTIONS['office']['options']])
+P('Excel and PowerPoint group their own families the same way',
+  SECTIONS['office']['options'][1][1] == EXCEL_EXTENSIONS
+  and SECTIONS['office']['options'][2][1] == POWERPOINT_EXTENSIONS
+  and {'.xlsx', '.xlsm', '.ods', '.csv'} <= set(EXCEL_EXTENSIONS)
+  and {'.pptx', '.pptm', '.pps', '.odp'} <= set(POWERPOINT_EXTENSIONS))
+P('fixed-layout documents (PDF + XPS) live inside the office section',
+  PDF_EXTENSIONS in [option[1] for option in SECTIONS['office']['options']]
+  and SECTIONS['office']['options'][3][1] == PDF_EXTENSIONS)
+P('the remaining office formats (Visio/Publisher/OneNote/Access/iWork/...) have their own entry',
+  SECTIONS['office']['options'][4][1] == OTHER_OFFICE_EXTENSIONS
+  and {'.vsdx', '.pub', '.one', '.accdb', '.mpp', '.pages', '.key'} <= set(OTHER_OFFICE_EXTENSIONS))
 P('the combined office entry covers every office extension',
   sorted(SECTIONS['office']['options'][-1][1]) == sorted(OFFICE_EXTENSIONS),
   SECTIONS['office']['options'][-1][1])
 P('office extensions are the full set, de-duplicated',
-  OFFICE_EXTENSIONS == ['.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.pdf'],
-  OFFICE_EXTENSIONS)
+  OFFICE_EXTENSIONS == all_extensions(OFFICE_TYPES)
+  and len(OFFICE_EXTENSIONS) == len(set(OFFICE_EXTENSIONS))
+  and sorted(OFFICE_EXTENSIONS) == sorted(set(WORD_EXTENSIONS) | set(EXCEL_EXTENSIONS)
+                                          | set(POWERPOINT_EXTENSIONS) | set(PDF_EXTENSIONS)
+                                          | set(OTHER_OFFICE_EXTENSIONS)),
+  (len(OFFICE_EXTENSIONS), OFFICE_EXTENSIONS))
 
 archive_ids = [option[0] for option in SECTIONS['archives']['options']]
 P('archives menu offers each extension plus a combined entry',
@@ -513,10 +527,16 @@ P('the office menu lists every option plus Back',
   and i18n.get('common.back') in menu_text)
 P('choosing 0 leaves the section', result_back is None, result_back)
 
-_patch_int('5')
+_patch_int('6')
 result_pick = menu_handler.show_section_menu('office')
 _unpatch_int()
 P('choosing a number returns that option id', result_pick == 'all', result_pick)
+
+_patch_int('5')
+result_other = menu_handler.show_section_menu('office')
+_unpatch_int()
+P('the new "other office formats" entry is reachable (round 10)',
+  result_other == 'office_other', result_other)
 
 _patch_int('1')
 result_word = menu_handler.show_section_menu('office')

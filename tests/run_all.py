@@ -32,6 +32,7 @@ SUITES = [
     ('test_fixes_round7.py', 'Round 7 -- comparable scales, honest reasons, persistent priorities'),
     ('test_fixes_round8.py', 'Round 8 -- alphabetical tie-break, simple reasons, full paths, calm dry-run, main-menu settings'),
     ('test_fixes_round9.py', 'Round 9 -- office/archives/other SHA-256 duplicates, per-extension matching, section menus/reports'),
+    ('test_fixes_round10.py', 'Round 10 -- full office format coverage (macro/template/OpenDocument/WPS families, PDF+XPS, Visio/Publisher/Access/iWork entry)'),
 ]
 
 
