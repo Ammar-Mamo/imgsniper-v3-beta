@@ -33,16 +33,17 @@ class CLIMenuHandler:
         self.console.print(f"4 - {i18n.get('image_operations.small')}")
         self.console.print(f"5 - {i18n.get('image_operations.watermark')}")
         self.console.print(f"6 - {i18n.get('image_operations.face_detect_delete')}")
-        self.console.print(f"7 - {i18n.get('image_operations.priorities')}")
-        self.console.print(f"8 - {i18n.get('image_operations.back')}")
+        # Round 8: settings moved to the MAIN menu -- this menu now contains
+        # image operations only.
+        self.console.print(f"7 - {i18n.get('image_operations.back')}")
         self.console.print(f"0 - {i18n.get('image_operations.exit')}")
         self.console.print()
         
         try:
-            choice = IntPrompt.ask("", choices=[str(i) for i in range(9)], default="0")
+            choice = IntPrompt.ask("", choices=[str(i) for i in range(8)], default="0")
             return int(choice)
         except KeyboardInterrupt:
-            return 8
+            return 7
     
     def get_folders(self) -> List[str]:
         """Get folder paths from user input."""

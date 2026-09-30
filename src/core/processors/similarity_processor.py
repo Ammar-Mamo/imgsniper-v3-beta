@@ -72,6 +72,7 @@ class SimilarityProcessor:
             task = progress.add_task(i18n.get('common.deleting'), total=len(files_to_delete))
             
             deleted_files = []
+            moved_map = {}   # Round 8: {original path: recycle-bin destination}
             for file_path in files_to_delete:
                 try:
                     if file_path:  # تأكد من أن المسار ليس فارغاً
@@ -80,10 +81,17 @@ class SimilarityProcessor:
                         move_result = move_to_recycle_bin(file_path, subfolder="similar")
                         if move_result and move_result not in ["skipped_readonly", "skipped_protected", "skipped_error"]:
                             deleted_files.append(file_path)
+                            if move_result != "dry_run":
+                                moved_map[file_path] = move_result
                 except Exception:
                     pass  # المتابعة مع الملفات الأخرى
                 
                 progress.advance(task)
+        
+        # Round 8: ONE dry-run summary line instead of one console line per
+        # file (the per-file list now lives in imgsniper.log and the report).
+        if config.get('safety.dry_run_mode', False):
+            console.print(f"[bold magenta]🔍 {i18n.get('safety.dry_run_summary').format(len(deleted_files))}[/bold magenta]")
         
         # عرض معلومات سلة المحذوفات
         if deleted_files:
@@ -108,6 +116,6 @@ class SimilarityProcessor:
                 similar_groups_dict[f"group_{i+1}"] = group
         
         # توليد تقرير with pre-collected inتنسيقion
-        report_path = self.report_generator.generate_similar_report_with_info(similar_groups_dict, deleted_files, all_files_info)
+        report_path = self.report_generator.generate_similar_report_with_info(similar_groups_dict, deleted_files, all_files_info, moved_map)
         console.print(f"[green]{i18n.get('common.report_saved').format(report_path)}[/green]")
         console.print(f"[green]{i18n.get('common.completed')}[/green]")

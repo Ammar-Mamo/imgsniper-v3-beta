@@ -19,6 +19,146 @@ class CLISettingsHandler:
     def __init__(self, console: Console):
         self.console = console
     
+    def handle_settings_menu(self):
+        """Program-wide settings menu (round 8).
+
+        Settings used to be buried inside the IMAGES section (option 7 of the
+        image menu) even though they configure the program as a whole --
+        safety, priorities and scan modes equally govern the future
+        videos/office/archive categories. The menu now hangs off the MAIN
+        menu, one step after language selection.
+        """
+        while True:
+            self.console.clear()
+            
+            title = Text(i18n.get('settings.title'), style="bold blue")
+            self.console.print(Panel(title, expand=False))
+            self.console.print()
+            
+            # Current safety status at a glance.
+            self.console.print(f"[bold]{i18n.get('settings.current_status')}[/bold]")
+            dry_run = bool(config.get('safety.dry_run_mode', False))
+            confirm = bool(config.get('safety.confirm_before_delete', True))
+            max_files = config.get('safety.max_files_per_operation', 0)
+            try:
+                max_files = int(max_files)
+            except (TypeError, ValueError):
+                max_files = 0
+            self.console.print(f"  {'✅' if dry_run else '❌'} {i18n.get('settings.dry_run')}")
+            self.console.print(f"  {'✅' if confirm else '❌'} {i18n.get('settings.confirm_delete')}")
+            max_files_txt = i18n.get('settings.unlimited') if max_files <= 0 else str(max_files)
+            self.console.print(f"  🛂 {i18n.get('settings.max_files')}: {max_files_txt}")
+            self.console.print()
+            
+            self.console.print(f"1 - {i18n.get('settings.safety')}")
+            self.console.print(f"2 - {i18n.get('settings.priorities')}")
+            self.console.print(f"3 - {i18n.get('settings.scan_modes')}")
+            self.console.print(f"4 - {i18n.get('settings.reset_defaults')}")
+            self.console.print(f"0 - {i18n.get('priorities.back')}")
+            self.console.print()
+            
+            try:
+                choice = IntPrompt.ask("", choices=[str(i) for i in range(5)], default="0")
+                choice_int = int(choice)
+                
+                if choice_int == 0:
+                    break
+                elif choice_int == 1:
+                    self._handle_safety_settings()
+                elif choice_int == 2:
+                    self.handle_priority_settings()
+                elif choice_int == 3:
+                    self._handle_scan_modes()
+                elif choice_int == 4:
+                    self._reset_priorities_to_defaults()
+                
+                if choice_int != 0:
+                    input(i18n.get('common.press_any_key'))
+                    
+            except KeyboardInterrupt:
+                break
+    
+    def _handle_safety_settings(self):
+        """Safety settings submenu (round 8).
+
+        safety.dry_run_mode / confirm_before_delete / max_files_per_operation
+        used to be configurable ONLY by hand-editing settings.json -- the CLI
+        had no way to toggle them at all, which is exactly how a user ended
+        up stuck in dry-run mode without knowing how to leave it.
+        """
+        while True:
+            self.console.clear()
+            
+            title = Text(i18n.get('settings.safety'), style="bold blue")
+            self.console.print(Panel(title, expand=False))
+            self.console.print()
+            
+            self.console.print(f"[bold]{i18n.get('settings.current_status')}[/bold]")
+            dry_run = bool(config.get('safety.dry_run_mode', False))
+            confirm = bool(config.get('safety.confirm_before_delete', True))
+            max_files = config.get('safety.max_files_per_operation', 0)
+            try:
+                max_files = int(max_files)
+            except (TypeError, ValueError):
+                max_files = 0
+            self.console.print(f"  {'✅' if dry_run else '❌'} {i18n.get('settings.dry_run')}")
+            self.console.print(f"  {'✅' if confirm else '❌'} {i18n.get('settings.confirm_delete')}")
+            max_files_txt = i18n.get('settings.unlimited') if max_files <= 0 else str(max_files)
+            self.console.print(f"  🛂 {i18n.get('settings.max_files')}: {max_files_txt}")
+            self.console.print()
+            
+            self.console.print(f"1 - {i18n.get('settings.toggle_dry_run')}")
+            self.console.print(f"2 - {i18n.get('settings.toggle_confirm')}")
+            self.console.print(f"3 - {i18n.get('settings.change_max_files')}")
+            self.console.print(f"0 - {i18n.get('priorities.back')}")
+            self.console.print()
+            
+            try:
+                choice = IntPrompt.ask("", choices=[str(i) for i in range(4)], default="0")
+                choice_int = int(choice)
+                
+                if choice_int == 0:
+                    break
+                elif choice_int == 1:
+                    current = bool(config.get('safety.dry_run_mode', False))
+                    config.set('safety.dry_run_mode', not current)
+                    state = i18n.get('settings.enabled') if not current else i18n.get('settings.disabled')
+                    self.console.print(f"[green]{i18n.get('settings.dry_run_updated').format(state)}[/green]")
+                elif choice_int == 2:
+                    current = bool(config.get('safety.confirm_before_delete', True))
+                    config.set('safety.confirm_before_delete', not current)
+                    state = i18n.get('settings.enabled') if not current else i18n.get('settings.disabled')
+                    self.console.print(f"[green]{i18n.get('settings.confirm_updated').format(state)}[/green]")
+                elif choice_int == 3:
+                    new_max = IntPrompt.ask(i18n.get('settings.enter_max_files'), default=max_files)
+                    new_max_int = int(new_max)
+                    if new_max_int < 0:
+                        new_max_int = 0   # negative makes no sense; 0 = unlimited
+                    config.set('safety.max_files_per_operation', new_max_int)
+                    self.console.print(f"[green]{i18n.get('settings.max_files_updated').format(new_max_int)}[/green]")
+                
+                if choice_int != 0:
+                    input(i18n.get('common.press_any_key'))
+                    
+            except KeyboardInterrupt:
+                break
+    
+    def _reset_priorities_to_defaults(self):
+        """Reset priorities + threshold to the canonical defaults.
+
+        Deliberately does NOT touch the safety.* settings: silently switching
+        dry-run off for a user who relies on it would be dangerous.
+        """
+        if Confirm.ask(i18n.get('priorities.confirm_reset')):
+            config.set('priorities.resolution_priority', True)
+            config.set('priorities.size_priority', True)
+            config.set('priorities.date_priority', 'oldest')
+            # Use the single canonical default so Reset always matches a fresh
+            # install (no more silent drift).
+            config.set('priorities.order', list(DEFAULT_PRIORITY_ORDER))
+            config.set('processing.phash_threshold', 5)
+            self.console.print(f"[green]{i18n.get('priorities.reset_complete')}[/green]")
+    
     def handle_priority_settings(self):
         """Handle priority settings configuration."""
         while True:
@@ -55,13 +195,12 @@ class CLISettingsHandler:
             self.console.print(f"3 - {i18n.get('priorities.change_date')}")
             self.console.print(f"4 - {i18n.get('priorities.change_threshold')}")
             self.console.print(f"5 - {i18n.get('priorities.change_order')}")
-            self.console.print(f"6 - {i18n.get('scan_modes.title')}")
-            self.console.print(f"7 - {i18n.get('priorities.reset_defaults')}")
             self.console.print(f"0 - {i18n.get('priorities.back')}")
             self.console.print()
             
             try:
-                choice = IntPrompt.ask("", choices=[str(i) for i in range(8)], default="0")
+                # Round 8: scan modes + reset moved to the main settings menu.
+                choice = IntPrompt.ask("", choices=[str(i) for i in range(6)], default="0")
                 choice_int = int(choice)
                 
                 if choice_int == 0:
@@ -93,18 +232,8 @@ class CLISettingsHandler:
                         self.console.print(f"[red]{i18n.get('priorities.invalid_threshold')}[/red]")
                 elif choice_int == 5:
                     self._handle_priority_order()
-                elif choice_int == 6:
-                    self._handle_scan_modes()
-                elif choice_int == 7:
-                    if Confirm.ask(i18n.get('priorities.confirm_reset')):
-                        config.set('priorities.resolution_priority', True)
-                        config.set('priorities.size_priority', True)
-                        config.set('priorities.date_priority', 'oldest')
-                        # Use the single canonical default so Reset always
-                        # matches a fresh install (no more silent drift).
-                        config.set('priorities.order', list(DEFAULT_PRIORITY_ORDER))
-                        config.set('processing.phash_threshold', 5)
-                        self.console.print(f"[green]{i18n.get('priorities.reset_complete')}[/green]")
+                    # Round 8: options 6 (scan modes) and 7 (reset) moved to the
+                    # program-wide settings menu.
                 
                 if choice_int != 0:
                     input(i18n.get('common.press_any_key'))

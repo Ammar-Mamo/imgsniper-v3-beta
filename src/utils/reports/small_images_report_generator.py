@@ -20,8 +20,13 @@ class SmallImagesReportGenerator:
         self.reports_dir = reports_dir
         self.formatter = ReportFormatter()
     
-    def generate_small_images_report(self, deleted_files: List[str], all_files_info: Dict[str, Dict[str, Any]], min_width: int, min_height: int) -> str:
-        """Generate report for small images deletion operation."""
+    def generate_small_images_report(self, deleted_files: List[str], all_files_info: Dict[str, Dict[str, Any]], min_width: int, min_height: int, moved_map: Dict[str, str] = None) -> str:
+        """Generate report for small images deletion operation.
+
+        moved_map (round 8): {original path: recycle-bin destination} for the
+        files that were REALLY moved; in dry-run mode it is empty, so reports
+        show only the original paths.
+        """
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         report_path = self.reports_dir / f"small_images_{timestamp}.txt"
         
@@ -46,10 +51,14 @@ class SmallImagesReportGenerator:
                     file_info = all_files_info.get(file_path, {"error": "Info not available"})
                     if 'error' in file_info:
                         f.write(f"  📄 {Path(file_path).name}\n")
+                        # Round 8: original path + recycle-bin destination.
+                        self.formatter.write_path_lines(f, file_path, moved_map)
                         f.write(f"  ❌ {self.formatter.get_text('error_reading_file')}: {file_info['error']}\n")
                         f.write(f"  📌 {self.formatter.get_localized_fallback('Reason', 'السبب')}: {self.formatter.get_localized_fallback('File too small', 'ملف صغير جداً')}\n")
                     else:
                         f.write(f"  📄 {file_info['name']}\n")
+                        # Round 8: original path + recycle-bin destination.
+                        self.formatter.write_path_lines(f, file_path, moved_map)
                         f.write(f"  💾 Size: {file_info['size_mb']} MB\n")
                         f.write(f"  📐 Dimensions: {file_info['width']}x{file_info['height']}\n")
                         f.write(f"  📅 Date Extracted: {format_extracted_date(file_info)}\n")

@@ -15,6 +15,7 @@ from rich.text import Text
 from ..core.config import config
 from ..core.i18n.i18n import i18n
 from .image_cli import ImageCLI
+from .cli_settings_handler import CLISettingsHandler
 
 class MainCLI:
     """Main CLI interface."""
@@ -22,6 +23,9 @@ class MainCLI:
     def __init__(self):
         self.console = Console()
         self.image_cli = ImageCLI(self.console)
+        # Round 8: settings moved OUT of the images section -- they configure
+        # the program as a whole, so they hang off the MAIN menu.
+        self.settings_handler = CLISettingsHandler(self.console)
         
         # إنشاء المجلدات الضرورية
         self._create_directories()
@@ -100,12 +104,16 @@ class MainCLI:
             self.console.print(f"3 - {i18n.get('categories.office')}")
             self.console.print(f"4 - {i18n.get('categories.archives')}")
             self.console.print(f"5 - {i18n.get('categories.others')}")
-            self.console.print(f"6 - {i18n.get('categories.back_to_languages')}")
+            # Round 8: program-wide settings live in the MAIN menu (they used
+            # to be buried inside the images section, even though they also
+            # govern the future videos/office/archive categories).
+            self.console.print(f"6 - {i18n.get('categories.settings')}")
+            self.console.print(f"7 - {i18n.get('categories.back_to_languages')}")
             self.console.print(f"0 - {i18n.get('categories.exit')}")
             self.console.print()
             
             try:
-                choice = IntPrompt.ask("", choices=["0", "1", "2", "3", "4", "5", "6"], default="0")
+                choice = IntPrompt.ask("", choices=["0", "1", "2", "3", "4", "5", "6", "7"], default="0")
                 choice_int = int(choice)
                 
                 if choice_int == 0:
@@ -121,6 +129,8 @@ class MainCLI:
                 elif choice_int == 5:
                     self._show_coming_soon()
                 elif choice_int == 6:
+                    self.settings_handler.handle_settings_menu()
+                elif choice_int == 7:
                     break
                     
             except KeyboardInterrupt:

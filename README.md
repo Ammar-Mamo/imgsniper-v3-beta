@@ -34,7 +34,7 @@ deleting them.
 | **Similar-image detection** | Perceptual hashing (`imagehash`). Four scan modes trade speed for accuracy: `normal` (hash size 8), `medium` (10), `advanced` (12), `ultra` (16). The similarity threshold scales with the hash size so "similar" means the same thing in every mode. |
 | **Corrupted-image detection** | Attempts a real decode and flags files that fail. |
 | **Small-image detection** | Flags images below a resolution threshold (default 300×300). |
-| **Reports** | A text report per operation, listing every group, the image kept, the images removed, and a human-readable **reason** for each decision. |
+| **Reports** | A text report per operation, listing every group, the image kept, the images removed, each file's **full original path** (plus the recycle-bin destination outside dry-run), and a human-readable **reason** for each decision. |
 
 The CLI is available in **English** and **Arabic** (`language` in
 `config/settings.json`, default `en`).
@@ -66,6 +66,19 @@ advantage the deleted file genuinely had ("…within the no-decision
 threshold"), instead of ambiguous labels like "Higher resolution" for a
 1-pixel gap.
 
+**Round 8 — deterministic ties, readable reasons, full paths.** A full-score
+tie is now broken **alphabetically by filename** (case-insensitive), so the
+same folder keeps the same winner on every run instead of whatever file the
+scan order happened to visit first. Reasons were shortened to the plain
+deciding fact — `filename importance (6/9 vs 2/9)`, and for a deletion
+`kept: … — this file: …` — with ties labelled
+`Tie in weighted criteria — kept the alphabetically first filename`. Every
+report shows the full original path of the kept **and** deleted files, plus
+the exact `Moved to:` recycle-bin destination outside dry-run, so any removed
+image can be found again instantly. Dry-run no longer prints one line per
+file: those lines go to `imgsniper.log` and the console shows a single
+`DRY-RUN: N files would be moved` summary.
+
 Two guards prevent the classic failure mode of "kept a thumbnail, deleted the
 real photo":
 
@@ -87,7 +100,13 @@ can be put back by hand at any time.
 |---|---|
 | `safety.confirm_before_delete` | Asks for an explicit `y` before anything is moved. |
 | `safety.dry_run_mode` | Announces what *would* be moved and touches nothing at all — not even empty recycle-bin folders. |
-| `safety.max_files_per_operation` | Hard cap on how many files one operation may move. |
+| `safety.max_files_per_operation` | Hard cap on how many files one operation may move (`0` = unlimited). |
+
+**Round 8 — all three toggles are in the CLI itself:** main menu →
+**⚙️ Settings → 🛡️ Safety Settings** turns dry-run / confirmation on and off
+and changes the max-files cap (no hand-editing `settings.json`, and no way to
+get stuck in dry-run). The same menu hosts priorities, scan modes and
+"reset to defaults".
 
 Additional guarantees that are always on:
 
@@ -98,8 +117,9 @@ Additional guarantees that are always on:
 - Unexpected failures (unreadable EXIF, unhashable files, failed comparison
   batches) are written to `imgsniper.log` rather than swallowed.
 
-> **Recommended first run:** set `safety.dry_run_mode` to `true`, run a scan,
-> read the report, and only then switch it back to `false`.
+> **Recommended first run:** set `safety.dry_run_mode` to `true` — either in
+> `config/settings.json` or from the CLI (main menu → **⚙️ Settings → 🛡️
+> Safety Settings**) — run a scan, read the report, then toggle it back off.
 
 ---
 

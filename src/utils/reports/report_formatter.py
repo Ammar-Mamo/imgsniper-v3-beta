@@ -183,15 +183,50 @@ class ReportFormatter:
                 str(better_info.get('extracted_date', 'Unknown')),
                 str(worse_info.get('extracted_date', 'Unknown')))
 
-    def _kept_scored_higher_text(self, margin: float, criterion_label: str,
-                                 kept_value: str, deleted_value: str) -> str:
-        """The round-7 leading sentence: WHAT decided the outcome, by how much."""
+    def _criterion_decided_text(self, criterion_label: str, kept_value: str,
+                                rival_value: str) -> str:
+        """Round 8: the simple deciding sentence -- criterion + values.
+
+        Users found the round-7 wording ("kept file has a higher weighted
+        score (+X pts; main advantage: ...)") too complex. The criterion
+        together with the two values states the same fact directly, and the
+        values keep the sentence unambiguous about WHICH side is better.
+        """
         text = self._honest_reason(
-            'reason_kept_scored_higher',
-            'kept file has a higher weighted score (+{margin} pts; main advantage: {criterion}: {kept} vs {deleted})',
-            'الملف المحفوظ حصل على درجة موزونة أعلى (+{margin} نقطة؛ الميزة الأساسية: {criterion}: {kept} مقابل {deleted})')
-        return str(text).format(margin=f"{margin:.1f}", criterion=criterion_label,
-                                kept=kept_value, deleted=deleted_value)
+            'reason_criterion_decided',
+            '{criterion} ({kept} vs {deleted})',
+            '{criterion} ({kept} مقابل {deleted})')
+        return str(text).format(criterion=criterion_label,
+                                kept=kept_value, deleted=rival_value)
+
+    def _criterion_decided_deletion_text(self, criterion_label: str,
+                                         kept_value: str,
+                                         deleted_value: str) -> str:
+        """Round 8 deletion variant: says plainly which file is which."""
+        text = self._honest_reason(
+            'reason_criterion_decided_deletion',
+            '{criterion} (kept: {kept} — this file: {deleted})',
+            '{criterion} (المُبقى: {kept} — هذا الملف: {deleted})')
+        return str(text).format(criterion=criterion_label,
+                                 kept=kept_value, deleted=deleted_value)
+
+    def _tie_reason_text(self, kept_file: str, other_file: str) -> str:
+        """Round 8: honest tie labels for the alphabetical tie-break.
+
+        * different filenames -> the alphabetical rule actually decided, so
+          the report says so (instead of the old scan-order claim);
+        * identical filenames AND identical scores -> a plain "Tie": the
+          files are interchangeable, which is what the user needs to know.
+        """
+        if Path(kept_file).name.lower() == Path(other_file).name.lower():
+            return self._honest_reason(
+                'reason_tie_full',
+                'Tie — identical criteria and filename',
+                'تعادل — تطابقت المعايير واسم الملف')
+        return self._honest_reason(
+            'reason_no_difference',
+            'Tie in weighted criteria — kept the alphabetically first filename',
+            'تعادل في المعايير الموزونة — أُبقي الاسم الأسبق أبجدياً')
 
     def _compose_note(self, table: Dict[str, Any], kept_key: str, other_key: str,
                       kept_info: Dict[str, Any], other_info: Dict[str, Any],
@@ -271,6 +306,34 @@ class ReportFormatter:
             error_text = self.get_localized_fallback("Error reading file", "خطأ في قراءة الملف")
             return f"  ❌ {error_text}: {error_msg}"
     
+    def write_path_lines(self, out, file_path: str,
+                         moved_map: Optional[Dict[str, str]] = None) -> None:
+        """Round 8: write the ORIGINAL path of a file into a report, plus
+        the recycle-bin destination it was actually moved to.
+
+        Every report shows the full original path for kept AND deleted
+        files (before this round only the corrupted report did, and the
+        user had no way to locate a group's files on disk). In real
+        (non-dry-run) mode each deleted file also gets a "Moved to" line so
+        recovery is a copy-paste away; in dry-run mode nothing was moved,
+        so only the original path is written.
+        """
+        try:
+            path_line = i18n.get('reports.image_path').format(file_path)
+            if str(path_line).startswith('[Missing'):
+                raise ValueError("missing")
+        except Exception:
+            path_line = f"  📁 Path: {file_path}"
+        out.write(path_line + "\n")
+        if moved_map and file_path in moved_map:
+            try:
+                moved_line = i18n.get('reports.moved_to').format(moved_map[file_path])
+                if str(moved_line).startswith('[Missing'):
+                    raise ValueError("missing")
+            except Exception:
+                moved_line = f"  📥 Moved to: {moved_map[file_path]}"
+            out.write(moved_line + "\n")
+    
     def get_detailed_selection_reason(self, kept_file: str, group_files: List[str], all_files_info: Dict[str, Any]) -> str:
         """Honest selection reason computed from the SAME scoretable the
         engine used (round 7).
@@ -320,12 +383,9 @@ class ReportFormatter:
         if margin > 0.05 and advantage is not None:
             label, kept_value, rival_value = self._describe_criterion(
                 advantage, kept_info, rival_info)
-            reason = self._kept_scored_higher_text(margin, label, kept_value, rival_value)
+            reason = self._criterion_decided_text(label, kept_value, rival_value)
         else:
-            reason = self._honest_reason(
-                'reason_no_difference',
-                'No decisive difference in weighted criteria (tie broken by scan order)',
-                'لا فرق حاسم في معايير الوزن (كُسِر التعادل بترتيب الفحص)')
+            reason = self._tie_reason_text(kept_file, rival)
 
         note = self._compose_note(table, kept_file, rival, kept_info, rival_info, active)
         if note:
@@ -446,10 +506,7 @@ class ReportFormatter:
 
         table = self._score_table_for_group(group, all_files_info)
         if not table or kept_file not in table or deleted_file not in table:
-            return self._honest_reason(
-                'reason_no_difference',
-                'No decisive difference in weighted criteria (tie broken by scan order)',
-                'لا فرق حاسم في معايير الوزن (كُسِر التعادل بترتيب الفحص)')
+            return self._tie_reason_text(kept_file, deleted_file)
 
         kept_row, deleted_row = table[kept_file], table[deleted_file]
         margin = kept_row['total'] - deleted_row['total']
@@ -467,8 +524,8 @@ class ReportFormatter:
         if margin > 0.05 and advantage is not None:
             label, kept_value, deleted_value = self._describe_criterion(
                 advantage, kept_info, deleted_info)
-            main = self._kept_scored_higher_text(
-                margin, label, kept_value, deleted_value)
+            main = self._criterion_decided_deletion_text(
+                label, kept_value, deleted_value)
         elif self._name_has_recovery_marker(deleted_file):
             # Round 5 (#535) kept behaviour: the recovered/copy/bak marker is
             # a fact about the file name. Only used when nothing scored.
@@ -479,10 +536,7 @@ class ReportFormatter:
             # Audit round 5 (#18/#25): the old fallback ALWAYS claimed
             # "Recovered/backup image" -- even for files with no such marker
             # and no measurable difference. Report honestly instead.
-            main = self._honest_reason(
-                'reason_no_difference',
-                'No decisive difference in weighted criteria (tie broken by scan order)',
-                'لا فرق حاسم في معايير الوزن (كُسِر التعادل بترتيب الفحص)')
+            main = self._tie_reason_text(kept_file, deleted_file)
 
         note = self._compose_note(table, kept_file, deleted_file,
                                   kept_info, deleted_info, active)

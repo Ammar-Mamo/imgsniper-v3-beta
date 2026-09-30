@@ -22,8 +22,13 @@ class DuplicateReportGenerator:
         self.formatter = ReportFormatter()
         self.info_extractor = ImageInfoExtractor()
     
-    def generate_duplicates_report(self, duplicates: Dict[str, List[str]], deleted_files: List[str]) -> str:
-        """Generate report for duplicate images operation."""
+    def generate_duplicates_report(self, duplicates: Dict[str, List[str]], deleted_files: List[str], moved_map: Dict[str, str] = None) -> str:
+        """Generate report for duplicate images operation.
+
+        moved_map (round 8): {original path: recycle-bin destination} for the
+        files that were REALLY moved; in dry-run mode it is empty, so reports
+        show only the original paths.
+        """
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         report_path = self.reports_dir / f"duplicates_{timestamp}.txt"
         
@@ -56,10 +61,14 @@ class DuplicateReportGenerator:
                         if 'error' in kept_info:
                             # Fجميعback for ملفات that can't be read
                             f.write(f"  📄 {Path(kept_file).name}\n")
+                            # Round 8: full original path even for unreadable files.
+                            self.formatter.write_path_lines(f, kept_file)
                             f.write(f"  ❌ Error reading file: {kept_info['error']}\n")
                             f.write(f"{i18n.get('reports.selection_reason_fallback')}\n")
                         else:
                             f.write(f"  📄 {kept_info['name']}\n")
+                            # Round 8: full original path for every kept file.
+                            self.formatter.write_path_lines(f, kept_file)
                             f.write(f"  💾 Size: {kept_info['size_mb']} MB\n")
                             f.write(f"  📐 Dimensions: {kept_info['width']}x{kept_info['height']}\n")
                             f.write(f"  📅 Date Extracted: {format_extracted_date(kept_info)}\n")
@@ -86,10 +95,16 @@ class DuplicateReportGenerator:
                             if 'error' in deleted_info:
                                 # Fجميعback for ملفات that can't be read
                                 f.write(f"  📄 {Path(file_path).name}\n")
+                                # Round 8: original path + recycle-bin destination
+                                # (outside dry-run the file was really moved).
+                                self.formatter.write_path_lines(f, file_path, moved_map)
                                 f.write(f"  ❌ Error reading file: {deleted_info['error']}\n")
                                 f.write(f"  📌 {self.formatter.get_text('reason_undetermined')}\n")
                             else:
                                 f.write(f"  📄 {deleted_info['name']}\n")
+                                # Round 8: original path + recycle-bin destination
+                                # (outside dry-run the file was really moved).
+                                self.formatter.write_path_lines(f, file_path, moved_map)
                                 f.write(f"  💾 Size: {deleted_info['size_mb']} MB\n")
                                 f.write(f"  📐 Dimensions: {deleted_info['width']}x{deleted_info['height']}\n")
                                 f.write(f"  📅 Date Extracted: {format_extracted_date(deleted_info)}\n")
@@ -113,8 +128,13 @@ class DuplicateReportGenerator:
         
         return str(report_path)
     
-    def generate_duplicates_report_with_info(self, duplicates: Dict[str, List[str]], deleted_files: List[str], all_files_info: Dict[str, Dict[str, Any]]) -> str:
-        """Generate report for duplicate images operation with pre-collected file information."""
+    def generate_duplicates_report_with_info(self, duplicates: Dict[str, List[str]], deleted_files: List[str], all_files_info: Dict[str, Dict[str, Any]], moved_map: Dict[str, str] = None) -> str:
+        """Generate report for duplicate images operation with pre-collected file information.
+
+        moved_map (round 8): {original path: recycle-bin destination} for the
+        files that were REALLY moved; in dry-run mode it is empty, so reports
+        show only the original paths.
+        """
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         report_path = self.reports_dir / f"duplicates_{timestamp}.txt"
         
@@ -147,10 +167,14 @@ class DuplicateReportGenerator:
                         if 'error' in kept_info:
                             # Fجميعback for ملفات that can't be read
                             f.write(f"  📄 {Path(kept_file).name}\n")
+                            # Round 8: full original path even for unreadable files.
+                            self.formatter.write_path_lines(f, kept_file)
                             f.write(f"  ❌ Error reading file: {kept_info['error']}\n")
                             f.write(f"{i18n.get('reports.selection_reason_fallback')}\n")
                         else:
                             f.write(f"  📄 {kept_info['name']}\n")
+                            # Round 8: full original path for every kept file.
+                            self.formatter.write_path_lines(f, kept_file)
                             f.write(f"  💾 Size: {kept_info['size_mb']} MB\n")
                             f.write(f"  📐 Dimensions: {kept_info['width']}x{kept_info['height']}\n")
                             f.write(f"  📅 Date Extracted: {format_extracted_date(kept_info)}\n")
@@ -172,10 +196,16 @@ class DuplicateReportGenerator:
                             if 'error' in deleted_info:
                                 # Fجميعback for ملفات that can't be read
                                 f.write(f"  📄 {Path(file_path).name}\n")
+                                # Round 8: original path + recycle-bin destination
+                                # (outside dry-run the file was really moved).
+                                self.formatter.write_path_lines(f, file_path, moved_map)
                                 f.write(f"  ❌ Error reading file: {deleted_info['error']}\n")
                                 f.write(f"  📌 {self.formatter.get_text('reason_undetermined')}\n")
                             else:
                                 f.write(f"  📄 {deleted_info['name']}\n")
+                                # Round 8: original path + recycle-bin destination
+                                # (outside dry-run the file was really moved).
+                                self.formatter.write_path_lines(f, file_path, moved_map)
                                 f.write(f"  💾 Size: {deleted_info['size_mb']} MB\n")
                                 f.write(f"  📐 Dimensions: {deleted_info['width']}x{deleted_info['height']}\n")
                                 f.write(f"  📅 Date Extracted: {format_extracted_date(deleted_info)}\n")

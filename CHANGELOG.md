@@ -13,6 +13,62 @@ significant defect, `P3` = hygiene.
 
 ---
 
+## Round 8
+
+### P1 — full-score ties were broken by scan order, so the same folder could keep a different file each run
+
+The user reported a tie group where the alphabetical rule "no longer seemed
+to be taken into account" (`errors.txt`): round 7's tie label said "tie broken
+by scan order", meaning the winner depended on which file the scanner happened
+to visit first — two runs over the same folder could delete a different image.
+
+- `select_best_file()` now breaks a full-score tie by the FILENAME
+  (case-insensitive) and only falls back to scan order when the names are
+  identical too (in which case the files are interchangeable). Verified with
+  3 identical files × all 6 input permutations → one single winner, the
+  alphabetically first filename.
+
+### P2 — report reasons were too convoluted to read
+
+The round-7 sentences ("kept file has a higher weighted score (+4.4 pts; main
+advantage: filename importance: 6/9 vs 2/9)") were accurate but unreadable —
+the user asked to "just tell me the result, e.g. filename importance".
+
+- Selection reason: `<criterion> (<kept> vs <deleted>)` →
+  `filename importance (6/9 vs 2/9)`.
+- Deletion reason: `<criterion> (kept: <kept> — this file: <deleted>)`.
+- Full tie: `Tie in weighted criteria — kept the alphabetically first filename`
+  (or `Tie — identical criteria and filename` when even the name matches).
+
+### P2 — reports didn't show where the files actually are
+
+- Every report now prints `📁 Path: <full original path>` for the kept file
+  AND each deleted file (before, only the corrupted report had paths).
+- Outside dry-run each deleted file's path is followed by
+  `📥 Moved to: <recycle-bin destination>` — the exact path
+  `move_to_recycle_bin()` returned — so recovery is copy-paste. Dry-run omits
+  it, because nothing was moved.
+
+### P3 — dry-run flooded the console and the settings were buried
+
+- Dry-run used to print one "[DRY-RUN] would move…" line PER FILE (thousands
+  of lines on large libraries). Those lines now go to `imgsniper.log`; the
+  console keeps the banner plus ONE summary line
+  (`DRY-RUN: N files would be moved — the full list is in the report`).
+- Settings moved from the image menu to the MAIN menu (option 6): safety
+  toggles (dry-run / confirm / max files — previously editable only by
+  hand-editing settings.json, which is how a user ends up stuck in dry-run
+  without knowing how to leave it), priorities, scan modes and "reset to
+  defaults" now live in one place that also governs the future video/office
+  categories.
+- All new strings exist in EN + AR (`settings.*`, `reports.moved_to`,
+  `reports.reason_criterion_decided*`, `reports.reason_tie_full`,
+  `safety.dry_run_summary`).
+
+Pinned by `tests/test_fixes_round8.py` (49 assertions).
+
+---
+
 ## Round 7
 
 ### P1 — selection criteria were not comparable; the filename decided everything

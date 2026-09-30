@@ -149,7 +149,6 @@ infos1 = {'kept.jpg': kept_info1, 'deleted.jpg': deleted_info1}
 
 try:
     reasons = rf.get_deletion_reason('deleted.jpg', 'kept.jpg', infos1)
-    print("REASONS1:", reasons, file=sys.stderr)
     P('kept wins on older date and filename (8 vs 2); deleted has sub-threshold res/size edges labelled',
       'Older date' in reasons and
       'resolution differed only within the no-decision threshold' in reasons,
@@ -170,7 +169,6 @@ infos2 = {'kept2.jpg': kept_info2, 'deleted2.jpg': deleted_info2}
 
 try:
     reasons2 = rf.get_deletion_reason('deleted2.jpg', 'kept2.jpg', infos2)
-    print("REASONS2:", reasons2, file=sys.stderr)
     P('REAL groups #518/#526/#572: 720x897 wins over 360x449 because resolution/size are now comparable',
       'resolution' in reasons2 and '720' in reasons2,
       reasons2)
@@ -186,9 +184,8 @@ infos3 = {'kept3.jpg': kept_info3, 'deleted3.jpg': deleted_info3}
 
 try:
     reasons3 = rf.get_deletion_reason('deleted3.jpg', 'kept3.jpg', infos3)
-    print("REASONS3:", reasons3, file=sys.stderr)
-    P('truly identical group -> explicit tie labels',
-      all('no decisive difference' in r.lower() for r in reasons3.splitlines()), reasons3)
+    P('truly identical group -> explicit tie labels (round 8: names the alphabetical rule)',
+      all('tie in weighted criteria' in r.lower() for r in reasons3.splitlines()), reasons3)
 except Exception as e:
     with open('test_error.txt', 'w') as f:
         traceback.print_exc(file=f)
@@ -202,7 +199,6 @@ fake_grp = {
 }
 try:
     sel_reasons = rf.get_detailed_selection_reason('winner.jpg', ['winner.jpg', 'second.jpg', 'third.jpg'], fake_grp)
-    print("SEL_REASONS:", sel_reasons, file=sys.stderr)
     P('selection reason cites the SECOND-BEST as the rival (note mentions filename importance where rival was better)',
       'filename importance' in sel_reasons and '6/9' in sel_reasons,
       sel_reasons)

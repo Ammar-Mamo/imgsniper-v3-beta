@@ -22,6 +22,7 @@
 
 
 import fnmatch
+import logging
 import os
 import shutil
 import stat as stat_module
@@ -32,6 +33,8 @@ from ...core.config import config
 from ...core.i18n.i18n import i18n
 
 import sys
+
+logger = logging.getLogger(__name__)
 
 from rich.console import Console
 
@@ -387,8 +390,12 @@ def move_to_recycle_bin(file_path: str, subfolder: str = None):
     # filesystem completely untouched (no empty recycle-bin dirs either).
     # The "dry_run" sentinel is deliberately NOT in the callers' skip-lists, so
     # reports and counters still show exactly what would have been deleted.
+    # Round 8: the per-file announcement goes to the LOG FILE only -- one
+    # console line per file used to flood the UI with thousands of lines on
+    # large libraries. The console keeps the single banner plus one summary
+    # line printed by the operation code.
     if config.get('safety.dry_run_mode', False):
-        _safe_print(f"🔍 {i18n.get('safety.dry_run_would_move')}: {source}")
+        logger.info("%s: %s", i18n.get('safety.dry_run_would_move'), source)
         return "dry_run"
     
     # جلب recycle bin مسار
@@ -456,7 +463,10 @@ def move_to_recycle_bin(file_path: str, subfolder: str = None):
     # نقل the ملف only if it's not protected
     try:
         shutil.move(str(source), str(destination))
-        return str(destination.parent)  # Return the مجلد where ملف was moved
+        # Round 8: return the FULL destination path (was the parent folder) so
+        # the callers can show "moved to <path>" lines in the reports. Callers
+        # that only need the folder derive it with Path(result).parent.
+        return str(destination)  # Full path where the file was moved
     except PermissionError as e:
         _safe_print(f"⚠️ {i18n.get('protected_files.protection_changed')}: {source}: {e}")
         _safe_print(f"   {i18n.get('protected_files.protection_changed')}")

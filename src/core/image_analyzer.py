@@ -215,6 +215,7 @@ class ImageAnalyzer:
         )
         
         deleted_files = []
+        moved_map = {}   # Round 8: {original path: recycle-bin destination}
         recycle_bin = None
         
         with Progress(
@@ -235,12 +236,21 @@ class ImageAnalyzer:
                     result = move_to_recycle_bin(image_path, subfolder="small")
                     if result and result not in ["skipped_readonly", "skipped_protected", "skipped_error"]:
                         deleted_files.append(image_path)
-                        if recycle_bin is None:
-                            recycle_bin = result
+                        if result != "dry_run":
+                            moved_map[image_path] = result
+                            # move_to_recycle_bin now returns the FULL file
+                            # destination (round 8); the display wants the folder.
+                            if recycle_bin is None:
+                                recycle_bin = str(Path(result).parent)
                 except Exception as e:
                     console.print(f"[red]❌ Error deleting {Path(image_path).name}: {e}[/red]")
                 finally:
                     progress.advance(task)
+        
+        # Round 8: ONE dry-run summary line instead of one console line per
+        # file (the per-file list now lives in imgsniper.log and the report).
+        if config.get('safety.dry_run_mode', False):
+            console.print(f"[bold magenta]🔍 {i18n.get('safety.dry_run_summary').format(len(deleted_files))}[/bold magenta]")
         
         # Show نتائج
         total_processed = len(deleted_files) + force_deleted_count
@@ -256,6 +266,6 @@ class ImageAnalyzer:
             console.print(f"[yellow]{i18n.get('protected_files.files_skipped_highly_protected').format(protected_count)}[/yellow]")
         
         # توليد تقرير
-        report_path = self.report_generator.generate_small_images_report(deleted_files, all_files_info, min_width, min_height)
+        report_path = self.report_generator.generate_small_images_report(deleted_files, all_files_info, min_width, min_height, moved_map)
         console.print(f"[green]{i18n.get('common.report_saved').format(report_path)}[/green]")
         console.print(f"[green]{i18n.get('common.completed')}[/green]")

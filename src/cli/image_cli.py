@@ -9,7 +9,6 @@ from rich.console import Console
 
 from .cli_menu_handler import CLIMenuHandler
 from .cli_operation_handler import CLIOperationHandler
-from .cli_settings_handler import CLISettingsHandler
 
 
 class ImageCLI:
@@ -21,7 +20,6 @@ class ImageCLI:
         # تهيئة معالجات متخصصة
         self.menu_handler = CLIMenuHandler(console)
         self.operation_handler = CLIOperationHandler(console, self.menu_handler)
-        self.settings_handler = CLISettingsHandler(console)
     
     def run(self):
         """Run the image processing menu."""
@@ -43,6 +41,6 @@ class ImageCLI:
             elif choice == 6:
                 self.operation_handler.handle_face_detection_delete()
             elif choice == 7:
-                self.settings_handler.handle_priority_settings()
-            elif choice == 8:
+                # Round 8: settings moved to the MAIN menu -- this menu now
+                # contains image operations only.
                 break

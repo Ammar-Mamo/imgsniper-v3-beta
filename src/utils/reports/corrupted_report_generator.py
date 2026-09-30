@@ -6,7 +6,7 @@ Corrupted images report generation
 
 from datetime import datetime
 from pathlib import Path
-from typing import List
+from typing import Dict, List
 
 from ...core.i18n.i18n import i18n
 from ...utils.helpers.system_monitor import system_monitor
@@ -20,8 +20,13 @@ class CorruptedReportGenerator:
         self.reports_dir = reports_dir
         self.formatter = ReportFormatter()
     
-    def generate_corrupted_report(self, corrupted_files: List[str]) -> str:
-        """Generate report for corrupted images operation."""
+    def generate_corrupted_report(self, corrupted_files: List[str], moved_map: Dict[str, str] = None) -> str:
+        """Generate report for corrupted images operation.
+
+        moved_map (round 8): {original path: recycle-bin destination} for the
+        files that were REALLY moved; in dry-run mode it is empty, so reports
+        show only the original paths.
+        """
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         report_path = self.reports_dir / f"corrupted_{timestamp}.txt"
         
@@ -40,10 +45,10 @@ class CorruptedReportGenerator:
                 
                 for i, file_path in enumerate(corrupted_files, 1):
                     f.write(f"  📄 {Path(file_path).name}\n")
-                    # 'reports.image_path' is a format string ("  📁 Path: {}"),
-                    # so use .format() — the old string-splitting hack wrote a
-                    # literal "{}" into the report instead of the real path.
-                    f.write(i18n.get('reports.image_path').format(file_path) + "\n")
+                    # Round 8: shared path writer — the ORIGINAL path plus the
+                    # recycle-bin destination when the file was really moved
+                    # (the old line here wrote only the original path).
+                    self.formatter.write_path_lines(f, file_path, moved_map)
                     # 'reports.corruption_reason' is already a complete,
                     # localized line — write it directly (no fragile surgery
                     # that produced a doubled emoji and a wrong label).

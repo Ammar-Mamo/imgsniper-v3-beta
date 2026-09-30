@@ -221,25 +221,25 @@ dr7 = fmt.get_deletion_reason('d.jpg', 'k.jpg', infos7)
 P('#7 deletion reason no longer claims Larger/Smaller file size',
   'Larger' not in dr7 and 'Smaller' not in dr7, dr7)
 P('#7 deletion reason is the honest tie label',
-  'No decisive difference' in dr7, dr7)
+  'Tie in weighted criteria' in dr7, dr7)
 P('#7 reason names the sub-threshold size gap honestly (round 7)',
   'no-decision threshold' in dr7 and 'Larger' not in dr7, dr7.splitlines()[-1])
 
 sr7 = fmt.get_detailed_selection_reason('k.jpg', ['k.jpg', 'd.jpg'], infos7)
-P('#7 selection reason is honest too (no invented size story)',
-  'No decisive difference' in sr7 and 'alphabetical' not in sr7, sr7.splitlines()[0])
+P('#7 selection reason is honest too (round 8: tie names the real rule)',
+  'Tie in weighted criteria' in sr7 and 'alphabetically' in sr7, sr7.splitlines()[0])
 
 # #15: 4.63 vs 4.31 MB below the cap -- the size label MUST remain.
 k15 = info(4.63, 4000 * 3000, 4000, 3000, '2023-05-21 19:30:28', 'exif', 2)
 d15 = info(4.31, 4000 * 3000, 4000, 3000, '2023-05-21 19:30:29', 'exif', 2)
 infos15 = {'k.jpg': k15, 'd.jpg': d15}
 dr15 = fmt.get_deletion_reason('d.jpg', 'k.jpg', infos15)
-P('#15 real sub-cap difference is attributed to file size (round 7 wording)',
+P('#15 real sub-cap difference is attributed to file size (round 8 wording)',
   'file size' in dr15 and '4.63 MB' in dr15 and '4.31 MB' in dr15
-  and 'higher weighted score' in dr15, dr15)
+  and 'kept:' in dr15, dr15)
 sr15 = fmt.get_detailed_selection_reason('k.jpg', ['k.jpg', 'd.jpg'], infos15)
-P('#15 selection reason attributes the win to file size',
-  'file size' in sr15 and 'higher weighted score' in sr15, sr15.splitlines()[0])
+P('#15 selection reason attributes the win to file size (round 8 wording)',
+  'file size' in sr15 and '4.63 MB' in sr15 and 'vs' in sr15, sr15.splitlines()[0])
 
 SEP('4) honest tie labels (#18/#25/#535)')
 
@@ -250,7 +250,7 @@ infos535 = {'img_471x1020x24_029100.jpg': k535, 'img_471x1020x24_029122.jpg': d5
 dr535 = fmt.get_deletion_reason(
     'img_471x1020x24_029122.jpg', 'img_471x1020x24_029100.jpg', infos535)
 P('#535 deletion reason no longer claims Recovered/backup',
-  'Recovered' not in dr535 and 'No decisive difference' in dr535, dr535)
+  'Recovered' not in dr535 and 'Tie in weighted criteria' in dr535, dr535)
 
 # #18: identical pair -> selection fallback.
 k18 = info(0.09, 810 * 1080, 810, 1080, 'Unknown', 'none', 2)
@@ -259,9 +259,9 @@ infos18 = {'Recovered_jpg_file(168).jpg': k18, 'Recovered_jpg_file(4872).jpg': d
 sr18 = fmt.get_detailed_selection_reason(
     'Recovered_jpg_file(168).jpg',
     ['Recovered_jpg_file(168).jpg', 'Recovered_jpg_file(4872).jpg'], infos18)
-P('#18 selection reason no longer invents shorter filename/alphabetical',
-  'shorter filename' not in sr18 and 'alphabetical' not in sr18
-  and 'No decisive difference' in sr18, sr18.splitlines()[0])
+P('#18 selection reason reports the real alphabetical tie rule (round 8)',
+  'shorter filename' not in sr18 and 'Tie in weighted criteria' in sr18
+  and 'alphabetically' in sr18, sr18.splitlines()[0])
 
 err_reason = fmt.get_deletion_reason('x.jpg', 'k.jpg', {'x.jpg': {'error': 'boom'}})
 P('unreadable file reports undetermined, not Recovered/backup',
@@ -293,8 +293,8 @@ sr1124 = fmt.get_detailed_selection_reason('k.jpg', ['k.jpg', 'd.jpg'], infos112
 P('#1124 genuine month-apart EXIF dates still win on the date criterion',
   'older date' in sr1124.lower(), sr1124.splitlines()[0])
 dr1124 = fmt.get_deletion_reason('d.jpg', 'k.jpg', infos1124)
-P('#1124 deletion reason describes the kept file being older (round 7 wording)',
-  'older date' in dr1124.lower() and 'higher weighted score' in dr1124, dr1124)
+P('#1124 deletion reason describes the kept file being older (round 8 wording)',
+  'older date' in dr1124.lower() and 'kept:' in dr1124, dr1124)
 
 # A 1-second gap between two EXIF timestamps is below the round-7 date gate
 # (DATE_GATE_SECONDS) -- it must NOT be dressed up as a decision any more.
@@ -303,7 +303,7 @@ d_ex = info(1.0, 1000 * 1000, 1000, 1000, '2023-05-21 19:30:29', 'exif', 5)
 infos_ex = {'k.jpg': k_ex, 'd.jpg': d_ex}
 dr_ex = fmt.get_deletion_reason('d.jpg', 'k.jpg', infos_ex)
 P('1-second EXIF gap is below the date gate -> honest tie label',
-  'No decisive difference' in dr_ex, dr_ex)
+  'Tie in weighted criteria' in dr_ex, dr_ex)
 
 SEP('6) date-only annotation in image info (#14)')
 
@@ -359,14 +359,14 @@ SEP('8) i18n keys present in both languages')
 
 i18n.set_language('en')
 P('EN reason_no_difference', i18n.get('reports.reason_no_difference') ==
-  'No decisive difference in weighted criteria (tie broken by scan order)')
+  'Tie in weighted criteria — kept the alphabetically first filename')
 P('EN reason_undetermined',
   not str(i18n.get('reports.reason_undetermined')).startswith('[Missing'))
 P('EN date_only_suffix',
   not str(i18n.get('reports.date_only_suffix')).startswith('[Missing'))
 i18n.set_language('ar')
 P('AR reason_no_difference',
-  'لا فرق حاسم' in i18n.get('reports.reason_no_difference'))
+  'تعادل' in i18n.get('reports.reason_no_difference'))
 P('AR reason_undetermined',
   'تعذر تحديد السبب' in i18n.get('reports.reason_undetermined'))
 P('AR date_only_suffix', 'اليوم فقط' in i18n.get('reports.date_only_suffix'))

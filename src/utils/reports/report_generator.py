@@ -74,30 +74,30 @@ class ReportGenerator:
         return self.formatter.get_deletion_reason(deleted_file, kept_file, all_files_info)
     
     # Corrupted Images Reports
-    def generate_corrupted_report(self, deleted_files: List[str]) -> str:
+    def generate_corrupted_report(self, deleted_files: List[str], moved_map: Dict[str, str] = None) -> str:
         """Generate report for corrupted images operation."""
-        return self.corrupted_generator.generate_corrupted_report(deleted_files)
+        return self.corrupted_generator.generate_corrupted_report(deleted_files, moved_map)
     
     # Duplicate Images Reports
-    def generate_duplicates_report(self, duplicates: Dict[str, List[str]], deleted_files: List[str]) -> str:
+    def generate_duplicates_report(self, duplicates: Dict[str, List[str]], deleted_files: List[str], moved_map: Dict[str, str] = None) -> str:
         """Generate report for duplicate images operation."""
-        return self.duplicate_generator.generate_duplicates_report(duplicates, deleted_files)
+        return self.duplicate_generator.generate_duplicates_report(duplicates, deleted_files, moved_map)
     
-    def generate_duplicates_report_with_info(self, duplicates: Dict[str, List[str]], deleted_files: List[str], all_files_info: Dict[str, Dict[str, Any]]) -> str:
+    def generate_duplicates_report_with_info(self, duplicates: Dict[str, List[str]], deleted_files: List[str], all_files_info: Dict[str, Dict[str, Any]], moved_map: Dict[str, str] = None) -> str:
         """Generate report for duplicate images operation with pre-collected file information."""
-        return self.duplicate_generator.generate_duplicates_report_with_info(duplicates, deleted_files, all_files_info)
+        return self.duplicate_generator.generate_duplicates_report_with_info(duplicates, deleted_files, all_files_info, moved_map)
     
     # Similar Images Reports
-    def generate_similar_report(self, similar_groups: Dict[str, List[str]], deleted_files: List[str]) -> str:
+    def generate_similar_report(self, similar_groups: Dict[str, List[str]], deleted_files: List[str], moved_map: Dict[str, str] = None) -> str:
         """Generate report for similar images operation."""
-        return self.similarity_generator.generate_similar_report(similar_groups, deleted_files)
+        return self.similarity_generator.generate_similar_report(similar_groups, deleted_files, moved_map)
     
-    def generate_similar_report_with_info(self, similar_groups: Dict[str, List[str]], deleted_files: List[str], all_files_info: Dict[str, Dict[str, Any]]) -> str:
+    def generate_similar_report_with_info(self, similar_groups: Dict[str, List[str]], deleted_files: List[str], all_files_info: Dict[str, Dict[str, Any]], moved_map: Dict[str, str] = None) -> str:
         """Generate report for similar images operation with pre-collected file information."""
-        return self.similarity_generator.generate_similar_report_with_info(similar_groups, deleted_files, all_files_info)
+        return self.similarity_generator.generate_similar_report_with_info(similar_groups, deleted_files, all_files_info, moved_map)
     
     # Smجميع Images Reports
-    def generate_small_images_report(self, deleted_files: List[str], all_files_info: Dict[str, Dict[str, Any]], min_width: int, min_height: int) -> str:
+    def generate_small_images_report(self, deleted_files: List[str], all_files_info: Dict[str, Dict[str, Any]], min_width: int, min_height: int, moved_map: Dict[str, str] = None) -> str:
         """Generate report for small images deletion operation."""
-        return self.small_images_generator.generate_small_images_report(deleted_files, all_files_info, min_width, min_height)
+        return self.small_images_generator.generate_small_images_report(deleted_files, all_files_info, min_width, min_height, moved_map)
     

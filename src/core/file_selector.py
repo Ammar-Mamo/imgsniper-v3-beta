@@ -293,9 +293,15 @@ class FileSelector:
             pixels, size_bytes, importances, date_scores,
             priority_order, resolution_boost, enabled)
 
-        # Highest weighted total wins; a tie keeps the earliest file in scan
-        # order (stable behaviour).
-        return min(table.keys(), key=lambda f: (-table[f]['total'], files.index(f)))
+        # Round 8: highest weighted total wins. A full-score tie is broken by
+        # the FILENAME (alphabetical, case-insensitive) so the outcome is
+        # DETERMINISTIC across runs -- the old "first in scan order" rule
+        # could pick a different winner between two runs of the same folder.
+        # If the names are identical too the files are interchangeable
+        # (same name, same score), so the first one encountered is kept.
+        return min(table.keys(), key=lambda f: (-table[f]['total'],
+                                                Path(f).name.lower(),
+                                                files.index(f)))
 
     def _compute_group_date_scores(self, files: List[str]) -> dict:
         """Normalize capture dates across the group onto a 0-10 scale.
