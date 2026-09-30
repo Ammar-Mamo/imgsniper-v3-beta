@@ -94,6 +94,49 @@ class ImageInfoExtractor:
             return {"error": str(e)}
 
 
+    def get_detailed_file_info(self, file_path: str) -> Dict[str, Any]:
+        """Round 9: the same dict as get_detailed_image_info(), for ANY file.
+
+        Non-image files (Word/Excel/PDF/archives) have no pixels and no EXIF,
+        so two things differ from an image:
+
+          * 'kind' is 'file' and the resolution stays 0x0 -- reports then skip
+            the Dimensions line instead of printing a meaningless 0x0;
+          * the date falls back to the file's modification time (source
+            'modified') so the date criterion still compares something real
+            instead of declaring every such group a tie.
+
+        Images are untouched: 'kind' is 'image' and the EXIF/filename date is
+        exactly the one the selection engine used. The dict keeps the very
+        same keys as before, so every existing report/formatter path works
+        unchanged.
+        """
+        info = self.get_detailed_image_info(file_path)
+        if 'error' in info:
+            return info
+
+        if info.get('width') and info.get('height'):
+            info['kind'] = 'image'
+            return info
+
+        info['kind'] = 'file'
+
+        # Only a fallback: a filename date (or a stray EXIF date on a file
+        # that still decodes) stays exactly as extracted above.
+        if not info.get('extracted_date') or info['extracted_date'] == 'Unknown':
+            date_priority = config.get('priorities.date_priority', 'oldest')
+            extracted_date, date_source = date_extractor.get_best_date(
+                file_path, date_priority, fallback_mtime=True
+            )
+            info['extracted_date'] = (
+                extracted_date.strftime('%Y-%m-%d %H:%M:%S') if extracted_date else 'Unknown'
+            )
+            info['date_source'] = date_source
+            info['date_only'] = False
+
+        return info
+
+
 def format_extracted_date(info: Dict[str, Any]) -> str:
     """Render extracted_date, annotating filename dates that carry no time.
 

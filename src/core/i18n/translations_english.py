@@ -16,7 +16,7 @@ ENGLISH_TRANSLATIONS = {
         "office": "Office Files Processing",
         "archives": "Archive Files Processing",
         "others": "Other Files Processing",
-        "settings": "⚙️ Settings",
+        "settings": "Settings",
         "back_to_languages": "Back to Language Selection",
         "exit": "Exit"
     },
@@ -52,6 +52,41 @@ ENGLISH_TRANSLATIONS = {
         "back": "Back",
         "exit": "Exit"
     },
+    "office_operations": {
+        "found_files": "📄 Found {} office files",
+        "no_duplicates_found": "✅ No duplicate office files found",
+        "word": "Delete Duplicate Word Documents (sha256)",
+        "excel": "Delete Duplicate Excel Files (sha256)",
+        "powerpoint": "Delete Duplicate PowerPoint Files (sha256)",
+        "pdf": "Delete Duplicate PDF Files (sha256)",
+        "all": "Delete Duplicate Office Files - all types (sha256)",
+        "back": "Back",
+        "exit": "Exit"
+    },
+    "archives_operations": {
+        "found_files": "🧱 Found {} archive files",
+        "no_duplicates_found": "✅ No duplicate archive files found",
+        "zip": "Delete Duplicate ZIP Files (sha256)",
+        "rar": "Delete Duplicate RAR Files (sha256)",
+        "7z": "Delete Duplicate 7Z Files (sha256)",
+        "tar": "Delete Duplicate TAR Files (sha256)",
+        "gz": "Delete Duplicate GZ/TGZ Files (sha256)",
+        "bz2": "Delete Duplicate BZ2 Files (sha256)",
+        "xz": "Delete Duplicate XZ Files (sha256)",
+        "all": "Delete Duplicate Archive Files - all types (sha256)",
+        "back": "Back",
+        "exit": "Exit"
+    },
+    "other_operations": {
+        "found_files": "📦 Found {} files",
+        "no_duplicates_found": "✅ No duplicate files found",
+        "custom": "Delete Duplicate Files by Extension (sha256)",
+        "enter_extensions": "Enter the extensions to scan (comma separated, e.g. iso, apk, mobi)",
+        "accepted": "✅ Scanning these extensions only: {}",
+        "no_valid_extensions": "No valid extension was entered - nothing was scanned. Use letters/digits like iso or apk.",
+        "back": "Back",
+        "exit": "Exit"
+    },
     "common": {
         "coming_soon": "Coming Soon...",
         "press_any_key": "Press any key to continue...",
@@ -71,6 +106,8 @@ ENGLISH_TRANSLATIONS = {
         "empty_path_error": "❌ Error: Path cannot be empty. Please enter a valid folder path.",
         "corrupted_found": "🔍 Found {} corrupted images (will be deleted).",
         "duplicates_found": "🔍 Found {} duplicate images (will be deleted).",
+        "duplicates_found_generic": "🔍 Found {} duplicate files (will be deleted).",
+        "size_prefilter": "⚡ Size pre-filter: reading {} of {} files ({} had a unique size and cannot be duplicates)",
         "similar_found": "🔍 Found {} similar images (will be deleted).",
         "visual_similarity_check": "🧠 Checking for visually similar images...",
         "comparing_images": "🔍 Comparing images for similarity...",
@@ -132,6 +169,11 @@ ENGLISH_TRANSLATIONS = {
     "reports": {
         "corrupted_title": "🔍 Corrupted Images Deletion Report",
         "duplicates_title": "🔍 Duplicate Images Deletion Report",
+        "office_duplicates_title": "🔍 Duplicate Office Files Deletion Report",
+        "archives_duplicates_title": "🔍 Duplicate Archive Files Deletion Report",
+        "other_duplicates_title": "🔍 Duplicate Files Deletion Report",
+        "kept_file": "🟢 Kept File:",
+        "deleted_files": "❌ Deleted Files:",
         "similar_title": "🔍 Visually Similar Images Deletion Report",
 
         "date_time": "📅 Date and Time: {}",

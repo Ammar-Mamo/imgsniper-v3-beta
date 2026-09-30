@@ -13,6 +13,92 @@ significant defect, `P3` = hygiene.
 
 ---
 
+## Round 9
+
+### Feature — the Office, Archives and Other sections now do real work
+
+Rounds 1–8 only ever handled images; the other three category menus answered
+"Coming Soon". They now run the same SHA-256 duplicate pipeline as images, for
+the file types the user asked for.
+
+- **`src/core/file_categories.py` (new)** — one registry drives everything: the
+  menu entries, each option's extensions, the recycle-bin subfolder and the
+  report prefix. Adding a format is one line plus its label; there is no second
+  place to update.
+- **Office** = Word (`.doc` + `.docx` as ONE type), Excel (`.xls` + `.xlsx`),
+  PowerPoint (`.ppt` + `.pptx`), PDF, or "all office types". **Archives** =
+  `.zip .rar .7z .tar .gz/.tgz .bz2 .xz` or all of them. **Other Files** asks
+  which extensions to scan (`iso, apk` → `.iso, .apk`) and refuses to scan when
+  the answer holds no valid extension, instead of reporting "no duplicates
+  found" for a scan that never covered anything.
+- **Matching is PER EXTENSION**: even the combined "all types" scan groups by
+  `(extension, sha256)`, so a `.doc` can never be declared a duplicate of a
+  `.docx` (or a `.zip` of a `.7z`) just because their bytes happen to match.
+- **Video stays "Coming Soon" on purpose**: it needs its own metadata source
+  (duration/resolution/codec) and its own performance profile, so it was
+  postponed rather than half-delivered.
+- The gear emoji was dropped from the Settings entry so it matches the other
+  categories, in both languages.
+
+### P1 — a 4 GB archive must not be read to find out it has no twin
+
+Hashing every file of a documents/archives library would read hundreds of GB
+for nothing.
+
+- `find_duplicate_files()` is a two-stage pipeline: (1) group by
+  `(extension, exact byte size)` using `stat()` only — a unique size cannot
+  have a byte-identical twin, so the file is dropped without a single read;
+  (2) SHA-256 (1 MiB blocks) on same-size candidates only. The console reports
+  how many files were actually read, so the saving is visible rather than
+  silent.
+- The image path is untouched: `find_duplicate_images()` keeps its own flow and
+  its 4 KB scan-mode chunk size.
+
+### P2 — non-image files had no date, so "keep the oldest copy" could never work
+
+Word/Excel/PDF/archive files carry no EXIF and usually no date in the name,
+so every such group was a permanent date tie.
+
+- `date_extractor.get_best_date()` gained `fallback_mtime`: when there is no
+  EXIF and no filename date, the file's MODIFICATION time is used and reported
+  with the source **`modified`** — never dressed up as EXIF data. It is opt-in
+  (`fallback_mtime=False` by default), so image behaviour is unchanged.
+- `FileSelector.select_best_file(..., fallback_mtime=True)` is used by the
+  section flow only, so the OLDEST copy survives there too.
+
+### P2 — a Word document has no resolution, so the report must not invent one
+
+- `ImageInfoExtractor.get_detailed_file_info()` returns the historic info dict
+  plus `kind`: `'image'` with real dimensions, or `'file'` with `0x0` and the
+  mtime date. Section reports then skip the Dimensions line instead of printing
+  a meaningless "0x0".
+
+### P2 — two report writers would have drifted apart
+
+- `DuplicateReportGenerator._write_duplicates_report()` is now the ONLY
+  duplicates writer. `spec=None` reproduces the image report byte-for-byte
+  (same file name, title, labels, group separator, on-demand info extraction);
+  a section `spec` switches the prefix (`duplicate_office_...`), the title, the
+  kept/deleted labels and the info extractor.
+- Fixed in passing: the no-info image variant built its reason-engine info dict
+  late, inside the kept-file branch, and raised `NameError` when the kept file
+  was unreadable — the report could not be written at all.
+- Removed files keep their own recycle-bin subfolder per section
+  (`duplicates-office`, `duplicates-archives`, `duplicates-other`; images keep
+  `duplicates`), so recovery stays organised and a section's deletions are easy
+  to find.
+
+### Tests
+
+`tests/test_fixes_round9.py` (91 assertions): registry and i18n coverage in
+both languages, extension normalisation, the size pre-filter (a unique-size
+file and a same-size/different-bytes file are never reported), per-extension
+isolation in the combined scan, recycle-bin exclusion, dry-run vs real move,
+report layout for images AND sections, mtime date fallback, menu rendering,
+main-menu routing (3/4/5 → sections, 2 still video), custom extensions (valid
+and invalid), and a full office flow through the CLI handler.
+`tests/run_all.py` now runs **10 suites**.
+
 ## Round 8
 
 ### P1 — full-score ties were broken by scan order, so the same folder could keep a different file each run

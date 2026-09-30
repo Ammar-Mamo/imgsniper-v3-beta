@@ -283,10 +283,20 @@ class DateExtractor:
             return pattern in tokens
         return pattern in filename_lower
     
-    def get_best_date(self, image_path: str, date_priority: str = 'oldest') -> Tuple[Optional[datetime], str]:
+    def get_best_date(self, image_path: str, date_priority: str = 'oldest',
+                      fallback_mtime: bool = False) -> Tuple[Optional[datetime], str]:
         """
         Get the best date from filename and EXIF, considering priority.
-        Returns (date, source) where source is 'filename', 'exif', or 'none'
+        Returns (date, source) where source is 'filename', 'exif', 'modified'
+        or 'none'.
+
+        Round 9: fallback_mtime lets NON-IMAGE files (Word/Excel/PDF/archives)
+        take part in the date criterion. They never carry EXIF and usually
+        have no date in the name, so without it every office group was a date
+        tie and the "oldest copy wins" rule could not express itself. The
+        modification time is a real, verifiable timestamp -- and the source is
+        reported as 'modified' so a report never pretends it was EXIF data.
+        Images keep the default (False): nothing about them changes.
         """
         filename = Path(image_path).name
         
@@ -300,6 +310,12 @@ class DateExtractor:
         elif exif_date and not filename_date:
             return exif_date, 'exif'
         elif not filename_date and not exif_date:
+            if fallback_mtime:
+                try:
+                    modified = datetime.fromtimestamp(Path(image_path).stat().st_mtime)
+                except OSError:
+                    return None, 'none'
+                return modified, 'modified'
             return None, 'none'
         
         # Both مصدرs have تاريخs - compare and choose based on أولوية

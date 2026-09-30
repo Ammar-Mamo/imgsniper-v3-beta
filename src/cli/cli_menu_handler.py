@@ -45,6 +45,41 @@ class CLIMenuHandler:
         except KeyboardInterrupt:
             return 7
     
+    def show_section_menu(self, section_key: str) -> Optional[str]:
+        """Round 9: operation menu of a NON-image section (office/archives/other).
+
+        The entries are generated FROM file_categories.SECTIONS, so adding an
+        extension there adds a menu line here automatically. Returns the option
+        id ('word', 'zip', 'all', 'custom', ...) or None when the user goes
+        back.
+        """
+        from ..core.file_categories import SECTIONS
+        
+        options = SECTIONS[section_key]['options']
+        
+        self.console.clear()
+        
+        title = Text(i18n.get('main_menu.title'), style="bold blue")
+        self.console.print(Panel(title, expand=False))
+        self.console.print()
+        
+        for index, (option_id, _extensions, label_key) in enumerate(options, start=1):
+            self.console.print(f"{index} - {i18n.get(label_key)}")
+        self.console.print(f"0 - {i18n.get('common.back')}")
+        self.console.print()
+        
+        try:
+            choice = IntPrompt.ask(
+                "", choices=[str(i) for i in range(len(options) + 1)], default="0"
+            )
+        except KeyboardInterrupt:
+            return None
+        
+        choice_int = int(choice)
+        if choice_int == 0:
+            return None
+        return options[choice_int - 1][0]
+    
     def get_folders(self) -> List[str]:
         """Get folder paths from user input."""
         try:

@@ -87,6 +87,26 @@ class ReportGenerator:
         """Generate report for duplicate images operation with pre-collected file information."""
         return self.duplicate_generator.generate_duplicates_report_with_info(duplicates, deleted_files, all_files_info, moved_map)
     
+    def get_detailed_file_info(self, file_path: str) -> Dict[str, Any]:
+        """Round 9: information about ANY file (image or not).
+
+        Images keep exactly the dict they always had; other files report
+        kind='file', no dimensions, and the modification time as their date
+        fallback so the date criterion and the report stay meaningful.
+        """
+        return self.info_extractor.get_detailed_file_info(file_path)
+    
+    def generate_file_duplicates_report_with_info(self, duplicates: Dict[Any, List[str]], deleted_files: List[str], all_files_info: Dict[str, Dict[str, Any]], moved_map: Dict[str, str] = None, spec: Dict[str, Any] = None) -> str:
+        """Round 9: duplicates report for a NON-image section.
+
+        Same layout and reason engine as the image report; `spec` (from
+        file_categories.SECTIONS) supplies the title, the labels and the
+        report file-name prefix.
+        """
+        return self.duplicate_generator.generate_file_duplicates_report_with_info(
+            duplicates, deleted_files, all_files_info, moved_map, spec
+        )
+    
     # Similar Images Reports
     def generate_similar_report(self, similar_groups: Dict[str, List[str]], deleted_files: List[str], moved_map: Dict[str, str] = None) -> str:
         """Generate report for similar images operation."""

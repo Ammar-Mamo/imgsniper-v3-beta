@@ -101,6 +101,20 @@ class ImageProcessor:
         """Delete duplicate images keeping the best one from each group."""
         return self.duplicate_detector.delete_duplicate_images(result, console, self.file_selector)
     
+    # Non-image Duplicate Detection Methods (Round 9)
+    def find_duplicate_files(self, folders: List[str], console: Console, extensions, spec):
+        """Find byte-identical NON-image files (office/archives/other).
+
+        sha256 + a size pre-filter, matched per extension -- see
+        DuplicateDetector.find_duplicate_files.
+        """
+        console.print(f"[dim]{self._get_system_info()}[/dim]")
+        return self.duplicate_detector.find_duplicate_files(folders, console, extensions, spec)
+    
+    def delete_duplicate_files(self, result: Dict[str, Any], console: Console, spec):
+        """Delete duplicate non-image files, keeping the best one per group."""
+        return self.duplicate_detector.delete_duplicate_files(result, console, self.file_selector, spec)
+    
     # Similarity Detection Methods
     def find_similar_images(self, folders: List[str], console: Console) -> Optional[Dict[str, Any]]:
         """Find visually similar images using perceptual hashing."""

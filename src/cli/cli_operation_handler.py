@@ -5,7 +5,7 @@ CLI operation handling functionality
 
 
 from rich.console import Console
-from rich.prompt import Confirm, IntPrompt
+from rich.prompt import Confirm, IntPrompt, Prompt
 
 from ..core.config import config
 from ..core.i18n.i18n import i18n
@@ -130,6 +130,56 @@ class CLIOperationHandler:
         
         input(i18n.get('common.press_any_key'))
     
+    def handle_duplicate_files(self, section_key: str, extensions=None, option_id: str = 'all'):
+        """Round 9: SHA-256 duplicate flow for office / archives / other files.
+
+        One flow for every non-image section -- only the extension list and the
+        section descriptor change. The "custom" option (Other Files) asks the
+        user which extensions to scan and REFUSES to scan when the answer is
+        empty/invalid, instead of silently reporting "no duplicates found" for
+        a scan that never covered anything.
+        """
+        from ..core.file_categories import SECTIONS, normalize_extensions
+
+        spec = SECTIONS[section_key]
+
+        try:
+            # "Other Files": the user picks the extensions at run time.
+            if option_id == 'custom':
+                raw = Prompt.ask(i18n.get('other_operations.enter_extensions'))
+                extensions = normalize_extensions(raw)
+                if not extensions:
+                    self.console.print(
+                        f"[yellow]⚠️ {i18n.get('other_operations.no_valid_extensions')}[/yellow]"
+                    )
+                    input(i18n.get('common.press_any_key'))
+                    return
+                self.console.print(
+                    f"[green]{i18n.get('other_operations.accepted').format(', '.join(extensions))}[/green]"
+                )
+
+            # جلب المجلدات من المستخدم
+            folders = self.menu_handler.get_folders()
+            if not folders:
+                return
+
+            # البحث عن المتطابقات: sha256 مع ترشيح بالحجم، وكل امتداد يقابل نفسه فقط
+            result = self.processor.find_duplicate_files(folders, self.console, extensions, spec)
+
+            if result and result['duplicates']:
+                # بوابة الأمان: dry_run_mode + confirm_before_delete + max_files
+                if self._safety_gate(self._count_deletable(result['duplicates'])):
+                    self.processor.delete_duplicate_files(result, self.console, spec)
+                else:
+                    self.console.print(f"[yellow]{i18n.get('common.cancelled')}[/yellow]")
+            else:
+                self.console.print(f"[green]{i18n.get(spec['no_duplicates_key'])}[/green]")
+
+        except Exception as e:
+            self.console.print(f"[red]{i18n.get('common.error').format(str(e))}[/red]")
+
+        input(i18n.get('common.press_any_key'))
+
     def handle_similar_images(self):
         """Handle similar images detection and deletion."""
         try:

@@ -121,13 +121,17 @@ class MainCLI:
                 elif choice_int == 1:
                     self.image_cli.run()
                 elif choice_int == 2:
+                    # Round 9: video processing is deliberately POSTPONED -- it
+                    # needs its own metadata source (duration/resolution/codec)
+                    # and its own performance profile, which is a season of work
+                    # on its own. The section stays visible but honest.
                     self._show_coming_soon()
                 elif choice_int == 3:
-                    self._show_coming_soon()
+                    self._run_section('office')
                 elif choice_int == 4:
-                    self._show_coming_soon()
+                    self._run_section('archives')
                 elif choice_int == 5:
-                    self._show_coming_soon()
+                    self._run_section('other')
                 elif choice_int == 6:
                     self.settings_handler.handle_settings_menu()
                 elif choice_int == 7:
@@ -136,6 +140,38 @@ class MainCLI:
             except KeyboardInterrupt:
                 break
     
+    def _run_section(self, section_key: str):
+        """Round 9: office / archives / other -- one loop for every section.
+
+        Shows the section's operation menu (built from file_categories.SECTIONS)
+        and runs the SHA-256 duplicate flow for the chosen type until the user
+        goes back. One method for all three sections keeps their behaviour
+        identical BY CONSTRUCTION instead of by three copies of the same code.
+
+        The menu/operation handlers come from ImageCLI on purpose: they are
+        generic components (menu drawing + one ImageProcessor), so the sections
+        share a single processor instead of spawning a second one.
+        """
+        from ..core.file_categories import SECTIONS
+
+        menu_handler = self.image_cli.menu_handler
+        operation_handler = self.image_cli.operation_handler
+        options = SECTIONS[section_key]['options']
+
+        while True:
+            option_id = menu_handler.show_section_menu(section_key)
+
+            if option_id is None:
+                return
+
+            extensions = None
+            for option, option_extensions, _label_key in options:
+                if option == option_id:
+                    extensions = option_extensions
+                    break
+
+            operation_handler.handle_duplicate_files(section_key, extensions, option_id)
+
     def _show_coming_soon(self):
         """Show coming soon message."""
         self.console.print(f"\n[yellow]{i18n.get('common.coming_soon')}[/yellow]")

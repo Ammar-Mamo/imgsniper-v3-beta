@@ -35,9 +35,29 @@ deleting them.
 | **Corrupted-image detection** | Attempts a real decode and flags files that fail. |
 | **Small-image detection** | Flags images below a resolution threshold (default 300×300). |
 | **Reports** | A text report per operation, listing every group, the image kept, the images removed, each file's **full original path** (plus the recycle-bin destination outside dry-run), and a human-readable **reason** for each decision. |
+| **Non-image duplicates** | The **Office**, **Archives** and **Other** sections run the same exact-hash duplicate detection for documents, spreadsheets, presentations, PDFs and archives. Matching is **per extension**, so a `.doc` is never offered as a duplicate of a `.docx`. Files with no EXIF and no date in the name fall back to their **modification time**, so the oldest copy is still the one kept. |
 
 The CLI is available in **English** and **Arabic** (`language` in
 `config/settings.json`, default `en`).
+
+### Which files each category scans
+
+| Main-menu item | Options | Types |
+|---|---|---|
+| **1 — Images** | duplicates, similar, corrupted, small | The image extensions in the scan filters |
+| **2 — Videos** | *coming soon* | Postponed on purpose — video needs its own metadata source (duration/resolution/codec) and its own performance profile |
+| **3 — Office** | Word, Excel, PowerPoint, PDF, all office types | `.doc`/`.docx` counted as **one** type, `.xls`/`.xlsx`, `.ppt`/`.pptx`, `.pdf` |
+| **4 — Archives** | ZIP, RAR, 7Z, TAR, GZ/TGZ, BZ2, XZ, all archives | `.zip .rar .7z .tar .gz/.tgz .bz2 .xz` |
+| **5 — Other files** | custom extensions | You type them (`iso, apk` → `.iso, .apk`); an answer with no valid extension refuses to scan instead of reporting "no duplicates found" for a scan that never covered anything |
+| **6 — Settings** | — | Program-wide configuration (Round 8 moved it out of the images section) |
+
+Matching is **per extension even in the combined "all types" scan**: two files
+are only compared when both their extension and their SHA-256 hash match, so a
+`.doc` can never be grouped with a `.docx` (or a `.zip` with a `.7z`) just
+because their bytes happen to be identical. Duplicates found in a section are
+moved to their own recycle-bin folder — `duplicates-office`,
+`duplicates-archives`, `duplicates-other` — and reports are prefixed
+`duplicate_office_`, `duplicate_archives_`, `duplicate_other_`.
 
 ### How the "best" image is chosen
 
@@ -79,6 +99,14 @@ image can be found again instantly. Dry-run no longer prints one line per
 file: those lines go to `imgsniper.log` and the console shows a single
 `DRY-RUN: N files would be moved` summary.
 
+**Round 9 — non-image files.** Word, Excel, PowerPoint, PDF and archive files
+carry no EXIF and usually no date in the name, so the date criterion would
+always tie. When a file has neither, its **modification time** is used and
+reported as `Date Source: modified` — never dressed up as EXIF. Size, filename
+and the alphabetical tie-break work exactly as they do for images, with one
+difference: the size pre-filter (below) means a unique-size file is never hashed
+and never even becomes a duplicate candidate.
+
 Two guards prevent the classic failure mode of "kept a thumbnail, deleted the
 real photo":
 
@@ -87,6 +115,21 @@ real photo":
   date or filename alone.
 - **Resolution-sacrifice warning** — if the kept image has *fewer* pixels than
   another image in the group, the report says so explicitly.
+
+### The two-stage duplicate scan
+
+Hashing every file of a documents or archives library would read hundreds of GB
+for nothing, so duplicate detection runs in two stages:
+
+1. **Size pre-filter (`stat` only).** Files are grouped by *extension + exact
+   byte size*. A file whose size is unique cannot have a byte-identical twin, so
+   it is dropped without being read at all.
+2. **SHA-256.** Only same-size candidates are read (1 MiB blocks) and grouped by
+   hash. The console states how many files were actually read, so the saving is
+   visible rather than silent.
+
+Image duplicate detection keeps its own stage-1 flow and its 4 KB chunk size,
+unchanged.
 
 ---
 
@@ -180,8 +223,9 @@ or, on Windows:
 scripts\run.bat
 ```
 
-The CLI is interactive: pick an operation, pick one or more folders to scan,
-review the summary, then confirm.
+The CLI is interactive: first pick a language, then a category from the main
+menu (1 images, 2 video, 3 office, 4 archives, 5 other files, 6 settings), then
+an operation and the folders to scan — review the summary, then confirm.
 
 Reports are written to `reports/`. Removed files are moved to `recycle-bin/`.
 Runtime messages are written to `imgsniper.log` (rotating, 10 MB × 5 files by
@@ -251,11 +295,15 @@ CI gate.
 | `test_fixes_round2.py` | Safety gate, date criterion, quality floor | 59 |
 | `test_fixes_round3.py` | Scoring, date sources, language defaults | 43 |
 | `test_fixes_round4.py` | Scan filters, logging, config writes, safety keys | 119 |
-| | **Total** | **306** |
+| `test_fixes_round5.py` | Recycle-bin behaviour, protected files, i18n | 45 |
+| `test_fixes_round6.py` | Report layout, reason wording, path handling | 55 |
+| `test_fixes_round7.py` | Comparable 0–10 criteria scales, no-decision gate, config restore | 22 |
+| `test_fixes_round8.py` | Alphabetical tie-break, plain reasons, full paths, main-menu settings | 49 |
+| `test_fixes_round9.py` | Office/archives/other SHA-256 duplicates, per-extension matching, section menus and reports | 91 |
+| | **Total** | **568** |
 
 Per-suite logs are written to the project root (`test_run.log`,
-`verify_e2e.log`, `test_run_round2.log`, `test_run_round3.log`,
-`test_run_round4.log`). All are git-ignored.
+`verify_e2e.log`, `test_run_round<N>.log`). All are git-ignored.
 
 The suites leave `config/settings.json` byte-for-byte untouched.
 
@@ -297,6 +345,8 @@ src/
   core/
     config.py               Settings load/save (atomic, no-op-aware)
     file_selector.py        Chooses the best image of each group
+    file_categories.py      Registry of categories, their extensions, report
+                            prefixes and recycle-bin folders
     image_analyzer.py       Orchestrates the operations
     detectors/              Duplicate, similarity and corruption detectors
     processors/             Thin processor layer over the detectors
@@ -306,7 +356,7 @@ src/
                             logging setup, system monitoring
     reports/                Report generators and formatters
 
-tests/                      Eight suites plus the unified runner (run_all.py)
+tests/                      Ten suites plus the unified runner (run_all.py)
 scripts/                    run.bat and maintenance helpers
 
 reports/                    Generated reports   (created at runtime, git-ignored)
@@ -333,6 +383,16 @@ This is a beta. Be aware of the following before relying on it:
   large libraries the comparison phase dominates the runtime; there is no
   BK-tree / multi-index-hashing acceleration yet.
 - **`use_gpu` has no effect** — no GPU code path exists in this project.
+- **Video is not implemented.** Main-menu item 2 says so plainly instead of
+  pretending; video needs its own metadata source (duration/resolution/codec)
+  and its own performance profile.
+- **"Duplicate" means byte-identical, by design.** A Word document re-saved by
+  another program, or an archive re-compressed with a different tool, holds the
+  same content but different bytes and is therefore **not** reported. Detecting
+  that would require format-aware parsing, which this beta does not attempt.
+- **Non-image sections keep the OLDEST copy when no date exists**, using the
+  file's modification time. Moving or copying such files updates that
+  timestamp, so it can change which copy is treated as the original.
 
 The remediation history — every audit finding fixed so far, with the reasoning
 and the tests that pin it — is in [`CHANGELOG.md`](CHANGELOG.md).
@@ -356,6 +416,12 @@ and the tests that pin it — is in [`CHANGELOG.md`](CHANGELOG.md).
   أمان: «حدّ الجودة» يمنع الاحتفاظ بصورة مصغّرة وحذف الصورة الحقيقية، و«تحذير
   التضحية بالدقة» يُظهر في التقرير إن كان الملف المُبقَى أقل دقة من غيره.
 - الواجهة والتقرير متوفران بالعربية والإنجليزية.
+- أقسام **الأوفيس** (Word وExcel وPowerPoint وPDF) و**الملفات المضغوطة**
+  (zip, rar, 7z, tar, gz, bz2, xz) و**ملفات أخرى** (تكتب امتداداتها بنفسك) أصبحت
+  تعمل: كشف التكرار بالمحتوى (SHA‑256) بعد فرز أولي بالحجم، ولا تُقارن إلا
+  الملفات المتطابقة في الامتداد، والمكرر يُنقل إلى `recycle-bin/duplicates-office`
+  (أو `duplicates-archives` / `duplicates-other`) مع تقرير خاص بكل قسم. قسم
+  **الفيديو** ما زال «قريبًا» بصراحة، ولم يُنفَّذ بعد.
 
 **التشغيل:** `python main.py` — **التثبيت:** `install_requirements.bat` —
 **الاختبارات:** `python tests/run_all.py`

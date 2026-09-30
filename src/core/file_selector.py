@@ -249,7 +249,7 @@ class FileSelector:
         except (TypeError, ValueError):
             return False
 
-    def select_best_file(self, files: List[str]) -> str:
+    def select_best_file(self, files: List[str], fallback_mtime: bool = False) -> str:
         """
         Select the best file from a group based on weighted quality scoring.
 
@@ -258,6 +258,11 @@ class FileSelector:
         keeps noise-level differences from deciding, so the configured
         priority order genuinely governs the outcome. A criterion switched
         off in the priority settings contributes nothing.
+
+        Round 9: fallback_mtime is forwarded to the DATE criterion for
+        non-image groups (Word/Excel/PDF/archives) -- those files carry no
+        EXIF and usually no date in the name, so a group with no dates at all
+        was a permanent tie. Images keep the default (False).
         """
         if len(files) == 1:
             return files[0]
@@ -284,7 +289,7 @@ class FileSelector:
             except Exception:
                 importances[file_path] = 0
 
-        date_scores = self._compute_group_date_scores(files)
+        date_scores = self._compute_group_date_scores(files, fallback_mtime)
         resolution_boost = self._compute_resolution_boost(files)
         enabled = {criterion: bool(config.get(f'priorities.{criterion}_priority', True))
                    for criterion in ('resolution', 'size', 'date', 'filename')}
@@ -303,7 +308,8 @@ class FileSelector:
                                                 Path(f).name.lower(),
                                                 files.index(f)))
 
-    def _compute_group_date_scores(self, files: List[str]) -> dict:
+    def _compute_group_date_scores(self, files: List[str],
+                                   fallback_mtime: bool = False) -> dict:
         """Normalize capture dates across the group onto a 0-10 scale.
 
         Dates come from `date_extractor.get_best_date()`, which merges BOTH
@@ -315,6 +321,10 @@ class FileSelector:
         DATE SOURCE along so precision is respected -- a filename date is
         day-level, and a sub-day gap involving one is an artifact, not a
         decision. Gaps under DATE_GATE_SECONDS are a tie for the same reason.
+
+        Round 9: fallback_mtime reaches the same delegate for non-image
+        groups, where the modification time stands in for a missing EXIF
+        date (reported as source 'modified').
         """
         date_priority = config.get('priorities.date_priority', 'oldest')
         want_oldest = str(date_priority).strip().lower() != 'newest'
@@ -323,7 +333,8 @@ class FileSelector:
         sources = {}
         for f in files:
             try:
-                d, source = date_extractor.get_best_date(f, str(date_priority))
+                d, source = date_extractor.get_best_date(
+                    f, str(date_priority), fallback_mtime)
             except Exception:
                 d, source = None, None
             dates[f] = d
