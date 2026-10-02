@@ -122,8 +122,11 @@ def newest_report(prefix):
 # --------------------------------------------------------------------------
 SEP('A. Section registry: office / archives / other')
 # --------------------------------------------------------------------------
-P('every CLI section is registered',
-  set(SECTIONS) == {'office', 'archives', 'other'}, sorted(SECTIONS))
+P('every CLI section is registered (video joined them in round 11)',
+  set(SECTIONS) == {'video', 'office', 'archives', 'other'}, sorted(SECTIONS))
+P('the three round-9 sections are untouched by the video round',
+  all(SECTIONS[key].get('engine') is None for key in ('office', 'archives', 'other'))
+  and all('options' in SECTIONS[key] for key in ('office', 'archives', 'other')))
 
 office_ids = [option[0] for option in SECTIONS['office']['options']]
 # Round 10 expanded the office families and added the "office_other" entry.
@@ -554,7 +557,10 @@ P('the archives menu maps its last entry to the combined option',
           for _o, _e, label in SECTIONS['archives']['options']),
   archive_pick)
 
-# main menu: 3/4/5 open the sections, 2 is still the postponed video category
+# main menu: 2 opens the video section now (round 11), 3/4/5 the other sections.
+# Round 11 changed ONE thing here on purpose: entry 2 used to print "coming
+# soon"; it now runs the EXACT-duplicate video flow, so this suite asserts the
+# new routing and that no section is a stub any more.
 section_calls = []
 coming_soon_calls = []
 orig_run_section = mcli.MainCLI._run_section
@@ -563,17 +569,17 @@ mcli.MainCLI._run_section = lambda self, key: section_calls.append(key)
 mcli.MainCLI._show_coming_soon = lambda self: coming_soon_calls.append(True)
 
 main_cli = mcli.MainCLI()
-_patch_int_seq(iter(['3', '4', '5', '2', '7']))
+_patch_int_seq(iter(['2', '3', '4', '5', '7']))
 main_cli._show_category_menu()
 _unpatch_int()
 
 mcli.MainCLI._run_section = orig_run_section
 mcli.MainCLI._show_coming_soon = orig_coming_soon
 
-P('main-menu entries 3/4/5 open office / archives / other',
-  section_calls == ['office', 'archives', 'other'], section_calls)
-P('video (2) is the only section still "coming soon"',
-  len(coming_soon_calls) == 1, len(coming_soon_calls))
+P('main-menu entries 2/3/4/5 open video / office / archives / other',
+  section_calls == ['video', 'office', 'archives', 'other'], section_calls)
+P('no main-menu section is a "coming soon" stub any more',
+  not coming_soon_calls, len(coming_soon_calls))
 
 # --- "Other Files": the extensions are typed by the user -------------------
 other_console = Console(file=io.StringIO(), force_terminal=False, width=110)

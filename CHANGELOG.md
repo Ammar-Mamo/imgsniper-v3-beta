@@ -13,6 +13,147 @@ significant defect, `P3` = hygiene.
 
 ---
 
+## Round 11
+
+### Feature — the Video section now does real work: EXACT duplicates, byte for byte
+
+Main-menu item 2 printed "Coming Soon" since round 9. It now runs a real scan,
+and the scope is deliberately narrow: **exact duplicates only**.
+
+Two videos are duplicates when they share **the same extension, the same byte
+size and the same full-file SHA-256**. Nothing else counts:
+
+- a re-encode (H.264 → H.265), another resolution or bitrate → NOT a match;
+- a remux (MP4 → MKV) → NOT a match, and `.mp4` never meets `.mov` even when
+  their bytes are identical, because the combined "all video types" scan is
+  per extension too;
+- another audio/subtitle track, a trim, a crop, a watermark → NOT a match.
+
+**No decoder was added.** No FFmpeg, no FFprobe, no OpenCV, no PyAV, no MoviePy:
+this phase reads bytes and never decodes one. `requirements.txt` and
+`pyproject.toml` are unchanged, and the suite asserts that no decoder module is
+imported anywhere in `src/`.
+
+### The eight video families (24 extensions)
+
+`mp4/m4v`, `mov`, `mkv`, `avi`, `wmv/asf`, `mpg/mpeg/m2v/m2ts/mts/vob`,
+`webm/ogv`, an "other containers" entry (`flv/f4v/3gp/3g2/rm/rmvb/divx/mxf/insv`)
+and the combined "all video types" entry. Deliberately excluded, with the reason
+recorded in the registry itself: `.ts` (shared with TypeScript sources — a
+"video" scan of a development folder would hash thousands of code files),
+`.m4a`/`.mka` (audio) and `.iso` (disc image). All three stay reachable through
+"Other Files", which accepts any extension the user types.
+
+### Three honest stages, because videos are the biggest files here
+
+1. **Size pre-filter** — `stat()` only, nothing is read. A unique
+   (extension, size) cannot have a byte-identical twin.
+2. **Sample pre-filter (video only)** — the first + last 1 MiB of each surviving
+   candidate. Byte-identical files ALWAYS share a sample, so a mismatch PROVES
+   two files differ; a match proves nothing at all. The console reports both
+   numbers honestly ("8.0 MiB read instead of 12.0 MiB").
+3. **Full-file SHA-256** — the ONLY verdict. A sample can never decide a
+   duplicate and never authorises a deletion. The suite proves the separation:
+   two files identical in their first and last MiB but different in the middle
+   survive the sample stage and are then correctly split by the full hash.
+
+Concurrency is capped at 4 simultaneous full-file hashes
+(`VIDEO_MAX_HASH_WORKERS`) instead of the scan mode's 16 workers — 16
+multi-GB reads at once thrash a disk instead of speeding it up.
+
+### Which copy survives, and why, in writing
+
+Selection is video-specific (`src/core/video_file_selector.py`). Name
+**provenance** is the primary key, because a copy counter says more about where
+a file came from than any score can:
+
+`recovery-style (0) < copy (1) < weak marker (2) < neutral (3) < original (4)`
+
+- copy counters of ANY size: `file (1).mp4`, `file (15).mp4` — while
+  `Movie (2018).mp4` is a YEAR and is reported as such, not penalised;
+- copy words: `- Copy`, `Copy`, `_copy`, `clone`, `duplicate`;
+- **Arabic patterns**: `نسخة`, `نسخة 1`, `نسخة (1)`, `نسخة٣`, `مكرر`. Matching
+  reads the filename text with Arabic numerals normalised, so detection never
+  depends on the Windows/OS locale;
+- recovery names: `Recovered`, `recovery`, `restored`, `مسترد`, `استرداد`;
+- **numbers are never penalised as such**: `20180817.mp4`,
+  `VID_20180817_143522.mp4`, `Episode 2.mp4`, `Video 01.mp4` and `Camera 02.mp4`
+  are not copies — camera-style names are in fact rewarded;
+- dates come from the EXISTING validated extractor (`strptime`), so `20189999`
+  and `12345678` are rejected and the report says they were ignored;
+- among equally original names the **older** date wins, and
+  `priorities.date_priority = "newest"` flips it exactly as everywhere else;
+- ties fall back to modification time, then path — so two runs over the same
+  folder always pick the same file.
+
+Every file of a group gets a decision record (provenance class, importance,
+date + source, per-criterion scores, weights, total, reasons), and the report
+prints those reasons line by line, e.g. `decided by name provenance:
+original-looking name beats copy-suffixed or copy-named`.
+
+### Reuse vs isolation — decided from the code, not from a guess
+
+Reused verbatim: `collect_files()` (scan filters + recycle-bin/reports
+exclusion), `_calculate_file_hash_worker()`, `_store_hash()`, and the whole
+shared deletion plumbing (`_collect_group_info`, `_move_files_to_bin`,
+`_print_deletion_footer`, `handle_protected_files_with_user_choice`,
+`reset_session_folder`), plus the pure scoring helpers `ratio_scores()` /
+`compute_date_scores()` and `date_extractor.extract_date_from_filename()` /
+`normalize_arabic_numbers()`. `VideoDuplicateDetector` subclasses
+`DuplicateDetector` to inherit that plumbing instead of copying it, so videos
+honour the same dry-run, read-only and protected-file rules as every other
+section.
+
+Isolated on purpose:
+
+- `date_extractor.filename_importance` was **NOT** extended. Adding `(15)`,
+  `نسخة` or `recovery` there would silently change which IMAGE is kept, so the
+  video heuristics live in their own module. The suite asserts the shared map
+  gained no video marker and that `file_selector.py` still knows nothing about
+  video.
+- `DuplicateReportGenerator` was **NOT** touched: image/office/archive report
+  formats are byte-identical to before. A video group has to state its
+  extension, its SHA-256 and its selection reasons, which that writer has no
+  concept of, so `VideoDuplicateReportGenerator` writes
+  `duplicate_video_<option>_<timestamp>.txt` with the same conventions (i18n
+  title, date/time, total groups, total deleted, the SAME one-line
+  `CPU Usage | Memory Usage` system line read from `system_monitor`,
+  `🧩 Group #n`, `🟢 Kept File` / `❌ Deleted Files`, `📄` name, `📁 Path`,
+  `📥 Moved to`, `📅 Date Extracted` with the date-only annotation,
+  `🧭 Date Source`, `🕒 Modified`, `📌 ... Reason`, and the `===` group
+  separator) and never overwrites an existing report. What it ADDS is
+  video-specific and would have changed every other report if it had been
+  bolted onto the shared writer: the group's Extension, its full SHA-256, the
+  shared byte size, the file count, each name's provenance class, and the
+  selection reasons as a bullet list instead of one summary line.
+- `FileSelector` (images) and `find_duplicate_files()` (office/archives/other)
+  are untouched. An office scan still returns exactly the round-9 result shape
+  (no `sample_stats`) and never prints the sample line.
+
+### CLI
+
+Item 2 opens the section through the SAME generic `_run_section()` loop as
+office/archives/other, with a menu generated from the registry (8 families +
+"all" + Back). The routing branch inside `handle_duplicate_files()` is driven by
+the registry's new `engine: "video"` key rather than a hardcoded section name,
+so a future section can opt in the same way. The safety gate (dry-run banner,
+`confirm_before_delete`, `max_files_per_operation`) applies unchanged, and
+removed files land in `recycle-bin/duplicates-video`.
+
+### Tests
+
+`tests/test_fixes_round11.py` (181 assertions): the registry and the generated
+menu, labels in both languages that say EXACT, every filename heuristic above,
+the sample/full-hash separation (same-size-different-bytes, and
+identical-ends-different-middle), per-extension isolation inside the combined
+scan, selection determinism and the "newest" flip, the report contents, the
+video recycle bin, dry-run safety, the full flow through the CLI handler, the
+inherited `filters.max_file_size_mb` behaviour, and guard rails for the old
+flows plus the no-decoder footprint.
+`tests/test_fixes_round9.py` was updated for the one
+intended behaviour change (item 2 is no longer a stub). `run_all.py` now runs
+**12 suites**; all green, ruff clean, `settings.json` byte-identical.
+
 ## Round 10
 
 ### Feature — the Office section now covers the whole office family, not four extensions

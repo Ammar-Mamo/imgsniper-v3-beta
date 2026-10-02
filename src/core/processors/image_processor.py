@@ -17,6 +17,7 @@ from ...utils.helpers.system_monitor import system_monitor
 # استيراد خاصized عمليةors
 from ..detectors.corruption_detector import CorruptionDetector
 from ..detectors.duplicate_detector import DuplicateDetector
+from ..detectors.video_duplicate_detector import VideoDuplicateDetector
 from ..detectors.similarity_detector import SimilarityDetector
 from ..file_selector import FileSelector
 from ..image_analyzer import ImageAnalyzer
@@ -35,6 +36,10 @@ class ImageProcessor:
         # تهيئة كاشفات متخصصة
         self.corruption_detector = CorruptionDetector()
         self.duplicate_detector = DuplicateDetector()
+        # Round 11: EXACT video duplicates (byte-for-byte, per extension). It
+        # subclasses DuplicateDetector, so the recycle-bin / dry-run / report
+        # plumbing is shared instead of copied.
+        self.video_duplicate_detector = VideoDuplicateDetector()
         self.similarity_detector = SimilarityDetector()
         self.file_selector = FileSelector()
         self.image_analyzer = ImageAnalyzer()
@@ -114,6 +119,29 @@ class ImageProcessor:
     def delete_duplicate_files(self, result: Dict[str, Any], console: Console, spec):
         """Delete duplicate non-image files, keeping the best one per group."""
         return self.duplicate_detector.delete_duplicate_files(result, console, self.file_selector, spec)
+    
+    # Video Duplicate Detection Methods (Round 11) -- EXACT duplicates only.
+    # Byte-for-byte, per extension: no content/perceptual matching of any kind.
+    def find_duplicate_videos(self, folders: List[str], console: Console, extensions, spec):
+        """Find byte-identical videos (same extension + size + full SHA-256).
+
+        Size pre-filter, then a first+last sample pre-filter, then the full-file
+        SHA-256 as the only verdict -- see VideoDuplicateDetector.
+        """
+        console.print(f"[dim]{self._get_system_info()}[/dim]")
+        return self.video_duplicate_detector.find_duplicate_videos(
+            folders, console, extensions, spec)
+    
+    def delete_duplicate_videos(self, result: Dict[str, Any], console: Console, spec,
+                                option_id: str = 'all'):
+        """Delete exact duplicate videos, keeping the best-named/dated copy.
+
+        The survivor is chosen by VideoFileSelector (original-looking names over
+        copy/recovery names, then the older date), and every reason is written
+        into the video report.
+        """
+        return self.video_duplicate_detector.delete_duplicate_videos(
+            result, console, spec, option_id)
     
     # Similarity Detection Methods
     def find_similar_images(self, folders: List[str], console: Console) -> Optional[Dict[str, Any]]:

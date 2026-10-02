@@ -164,12 +164,22 @@ class CLIOperationHandler:
                 return
 
             # البحث عن المتطابقات: sha256 مع ترشيح بالحجم، وكل امتداد يقابل نفسه فقط
-            result = self.processor.find_duplicate_files(folders, self.console, extensions, spec)
+            if spec.get('engine') == 'video':
+                # Round 11: the video section runs the EXACT-duplicate video
+                # engine (size pre-filter + sample pre-filter + full SHA-256,
+                # then the video filename heuristics). The branch is driven by
+                # the registry's 'engine' key, not by a hardcoded section name.
+                result = self.processor.find_duplicate_videos(folders, self.console, extensions, spec)
+            else:
+                result = self.processor.find_duplicate_files(folders, self.console, extensions, spec)
 
             if result and result['duplicates']:
                 # بوابة الأمان: dry_run_mode + confirm_before_delete + max_files
                 if self._safety_gate(self._count_deletable(result['duplicates'])):
-                    self.processor.delete_duplicate_files(result, self.console, spec)
+                    if spec.get('engine') == 'video':
+                        self.processor.delete_duplicate_videos(result, self.console, spec, option_id)
+                    else:
+                        self.processor.delete_duplicate_files(result, self.console, spec)
                 else:
                     self.console.print(f"[yellow]{i18n.get('common.cancelled')}[/yellow]")
             else:

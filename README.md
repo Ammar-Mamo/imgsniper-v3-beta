@@ -35,7 +35,8 @@ deleting them.
 | **Corrupted-image detection** | Attempts a real decode and flags files that fail. |
 | **Small-image detection** | Flags images below a resolution threshold (default 300×300). |
 | **Reports** | A text report per operation, listing every group, the image kept, the images removed, each file's **full original path** (plus the recycle-bin destination outside dry-run), and a human-readable **reason** for each decision. |
-| **Non-image duplicates** | The **Office**, **Archives** and **Other** sections run the same exact-hash duplicate detection for documents, spreadsheets, presentations, PDFs and archives. Matching is **per extension**, so a `.doc` is never offered as a duplicate of a `.docx`. Files with no EXIF and no date in the name fall back to their **modification time**, so the oldest copy is still the one kept. |
+| **Non-image duplicates** | The **Office**, **Archives**, **Other** and **Video** sections run the same exact-hash duplicate detection for documents, spreadsheets, presentations, PDFs, archives and video containers. Matching is **per extension**, so a `.doc` is never offered as a duplicate of a `.docx` (nor an `.mp4` of a `.mov`). Files with no EXIF and no date in the name fall back to their **modification time**, so the oldest copy is still the one kept. |
+| **Exact video duplicates** | Videos are matched **byte-for-byte only** — same extension + same size + same **full-file SHA-256**. A re-encode (H.264 → H.265), another resolution or bitrate, a remux (MP4 → MKV), another audio/subtitle track, a trim, a crop or a watermark is **not** a duplicate: there is no content/perceptual video matching in this project, and no decoder is installed. A first+last **sample** hash may only rule files *out*; the verdict is always the full-file hash. |
 
 The CLI is available in **English** and **Arabic** (`language` in
 `config/settings.json`, default `en`).
@@ -45,7 +46,7 @@ The CLI is available in **English** and **Arabic** (`language` in
 | Main-menu item | Options | Types |
 |---|---|---|
 | **1 — Images** | duplicates, similar, corrupted, small | The image extensions in the scan filters |
-| **2 — Videos** | *coming soon* | Postponed on purpose — video needs its own metadata source (duration/resolution/codec) and its own performance profile |
+| **2 — Videos** | MP4, MOV, MKV, AVI, WMV, MPEG, web video, other containers, all video types | **EXACT duplicates only.** MP4 `.mp4 .m4v` — MOV `.mov` — MKV `.mkv` — AVI `.avi` — WMV `.wmv .asf` — MPEG `.mpg .mpeg .m2v .m2ts .mts .vob` — web `.webm .ogv` — other `.flv .f4v .3gp .3g2 .rm .rmvb .divx .mxf .insv` (24 extensions in total). No content similarity: a re-encode, remux, other resolution/bitrate/audio track is NOT a match. |
 | **3 — Office** | Word, Excel, PowerPoint, PDF/XPS, other office formats, all office types | Whole **families**, not just the modern extension: Word `.doc .docx .docm .dot .dotx .dotm .rtf .odt .wps` — Excel `.xls .xlsx .xlsm .xlt .xltx .ods .csv .tsv .et` — PowerPoint `.ppt .pptx .pptm .pps .ppsx .pot .potx .odp .dps` — PDF/XPS `.pdf .xps .oxps` — other `.vsd .vsdx .pub .one .accdb .mdb .mpp .msg .eml .odg .odf .odb .pages .numbers .key` (45 extensions in total) |
 | **4 — Archives** | ZIP, RAR, 7Z, TAR, GZ/TGZ, BZ2, XZ, all archives | `.zip .rar .7z .tar .gz/.tgz .bz2 .xz` |
 | **5 — Other files** | custom extensions | You type them (`iso, apk` → `.iso, .apk`); an answer with no valid extension refuses to scan instead of reporting "no duplicates found" for a scan that never covered anything |
@@ -53,11 +54,14 @@ The CLI is available in **English** and **Arabic** (`language` in
 
 Matching is **per extension even in the combined "all types" scan**: two files
 are only compared when both their extension and their SHA-256 hash match, so a
-`.doc` can never be grouped with a `.docx` (or a `.zip` with a `.7z`) just
-because their bytes happen to be identical. Duplicates found in a section are
-moved to their own recycle-bin folder — `duplicates-office`,
-`duplicates-archives`, `duplicates-other` — and reports are prefixed
-`duplicate_office_`, `duplicate_archives_`, `duplicate_other_`.
+`.doc` can never be grouped with a `.docx` (or a `.zip` with a `.7z`, or an
+`.mp4` with a `.mov`) just because their bytes happen to be identical.
+Duplicates found in a section are moved to their own recycle-bin folder —
+`duplicates-office`, `duplicates-archives`, `duplicates-other`,
+`duplicates-video` — and reports are prefixed `duplicate_office_`,
+`duplicate_archives_`, `duplicate_other_`, `duplicate_video_` (the video report
+also names the scanned option: `duplicate_video_mp4_...`,
+`duplicate_video_all_...`).
 
 ### How the "best" image is chosen
 
@@ -299,9 +303,10 @@ CI gate.
 | `test_fixes_round6.py` | Report layout, reason wording, path handling | 55 |
 | `test_fixes_round7.py` | Comparable 0–10 criteria scales, no-decision gate, config restore | 22 |
 | `test_fixes_round8.py` | Alphabetical tie-break, plain reasons, full paths, main-menu settings | 49 |
-| `test_fixes_round9.py` | Office/archives/other SHA-256 duplicates, per-extension matching, section menus and reports | 93 |
+| `test_fixes_round9.py` | Office/archives/other SHA-256 duplicates, per-extension matching, section menus and reports | 94 |
 | `test_fixes_round10.py` | Full office format coverage: macro/template/OpenDocument/WPS families, PDF+XPS, Visio/Publisher/Access/iWork entry | 46 |
-| | **Total** | **616** |
+| `test_fixes_round11.py` | **Exact video duplicates**: 8 video families (24 extensions), size+sample pre-filters with the full-file SHA-256 as the only verdict, per-extension isolation, copy/Arabic-copy/recovery filename heuristics, valid-date preference, deterministic selection, `duplicate_video_<option>_` reports, `duplicates-video` bin, dry-run safety, the full flow through the CLI handler, the inherited size filters, and guard rails proving the image/office/archive flows and the shared filename map are untouched | 181 |
+| | **Total** | **798** |
 
 Per-suite logs are written to the project root (`test_run.log`,
 `verify_e2e.log`, `test_run_round<N>.log`). All are git-ignored.
@@ -346,18 +351,23 @@ src/
   core/
     config.py               Settings load/save (atomic, no-op-aware)
     file_selector.py        Chooses the best image of each group
+    video_file_selector.py  Chooses the best VIDEO of an exact-duplicate group
+                            (name provenance + validated date, with reasons)
     file_categories.py      Registry of categories, their extensions, report
                             prefixes and recycle-bin folders
     image_analyzer.py       Orchestrates the operations
-    detectors/              Duplicate, similarity and corruption detectors
+    detectors/              Duplicate, similarity and corruption detectors, plus
+                            video_duplicate_detector.py (exact video duplicates:
+                            size + sample pre-filters, full SHA-256 verdict)
     processors/             Thin processor layer over the detectors
     i18n/                   English and Arabic translation tables
   utils/
     helpers/                File utils, date extraction, scan modes,
                             logging setup, system monitoring
-    reports/                Report generators and formatters
+    reports/                Report generators and formatters, plus
+                            video_duplicate_report_generator.py
 
-tests/                      Eleven suites plus the unified runner (run_all.py)
+tests/                      Twelve suites plus the unified runner (run_all.py)
 scripts/                    run.bat and maintenance helpers
 
 reports/                    Generated reports   (created at runtime, git-ignored)
@@ -384,9 +394,30 @@ This is a beta. Be aware of the following before relying on it:
   large libraries the comparison phase dominates the runtime; there is no
   BK-tree / multi-index-hashing acceleration yet.
 - **`use_gpu` has no effect** — no GPU code path exists in this project.
-- **Video is not implemented.** Main-menu item 2 says so plainly instead of
-  pretending; video needs its own metadata source (duration/resolution/codec)
-  and its own performance profile.
+- **Video detection is EXACT-duplicate only.** There is no content analysis of
+  any kind: no frame extraction, no perceptual/video hash, no audio
+  fingerprint, no codec/resolution/bitrate comparison, no trim/crop/watermark
+  detection, and **no decoder dependency** (no FFmpeg/FFprobe/OpenCV/PyAV/
+  MoviePy). Two videos are duplicates only when they share an extension AND
+  every byte. A 4 GB re-encode of the same movie is therefore *not* reported —
+  that would need a future, separate subsystem.
+- **No video metadata is read** (duration/resolution/codec), because reading it
+  requires a container parser this project deliberately does not ship. The
+  video report shows what was actually verified: extension, size, full SHA-256,
+  the filename date and the selection reasons.
+- **`.ts` is not scanned as video** — the extension is shared with TypeScript
+  sources, so a "video" scan of a development folder would hash thousands of
+  code files. `.m4a`/`.mka` (audio) and `.iso` (disc image) are excluded too.
+  All of them stay reachable through **Other Files**, which accepts any
+  extension you type.
+- **The shared scan filters apply to videos too.** `collect_files()` honours
+  `filters.min_file_size_bytes` (1024) and `filters.max_file_size_mb`
+  (**500**), so a video larger than 500 MB is **skipped by the scan** and can
+  never be reported — exactly like a huge archive. Raise
+  `filters.max_file_size_mb` (or set it to `0` to disable the limit) if your
+  library holds full-length movies. This is inherited behaviour, not a video
+  special case, and `tests/test_fixes_round11.py` asserts it so it cannot change
+  silently.
 - **"Duplicate" means byte-identical, by design.** A Word document re-saved by
   another program, or an archive re-compressed with a different tool, holds the
   same content but different bytes and is therefore **not** reported. Detecting
@@ -424,7 +455,17 @@ and the tests that pin it — is in [`CHANGELOG.md`](CHANGELOG.md).
   المضغوطة** (zip, rar, 7z, tar, gz, bz2, xz) و**ملفات أخرى** (تكتب امتداداتها بنفسك):
   كشف التكرار بالمحتوى (SHA‑256) بعد فرز أولي بالحجم، ولا تُقارن إلا الملفات المتطابقة في
   الامتداد، والمكرر يُنقل إلى `recycle-bin/duplicates-office` (أو `duplicates-archives` /
-  `duplicates-other`) مع تقرير خاص بكل قسم. قسم **الفيديو** ما زال «قريبًا» بصراحة.
+  `duplicates-other`) مع تقرير خاص بكل قسم.
+- قسم **الفيديو** يعمل الآن على **التطابق التام فقط**: نفس الامتداد + نفس الحجم +
+  نفس SHA‑256 للملف كاملًا، عبر ثماني عائلات (mp4/m4v، mov، mkv، avi، wmv/asf،
+  mpeg/m2ts/vob، webm/ogv، وباقي الحاويات) — 24 امتداداً. تُقرأ عيّنة من أول وآخر
+  1 ميجابايت لترشيح المرشحين فقط، والحكم دائمًا للبصمة الكاملة. **لا يوجد أي تحليل
+  للمحتوى**: لا استخراج إطارات ولا بصمة إدراكية ولا بصمة صوت ولا مقارنة ترميز/دقة،
+  ولا أي مكتبة فك ترميز (لا FFmpeg ولا OpenCV ولا PyAV). إعادة الترميز أو تغيير
+  الحاوية أو الدقة ليست تكرارًا. يُفضَّل الاسم الأصلي على اسم النسخة `(1)` أو
+  `نسخة` أو `Recovered`، ثم التاريخ الأقدم الصالح في الاسم، ويُسجَّل سبب كل قرار في
+  `reports/duplicate_video_<الخيار>_<الوقت>.txt`، والملف المكرر يُنقل إلى
+  `recycle-bin/duplicates-video`.
 
 **التشغيل:** `python main.py` — **التثبيت:** `install_requirements.bat` —
 **الاختبارات:** `python tests/run_all.py`

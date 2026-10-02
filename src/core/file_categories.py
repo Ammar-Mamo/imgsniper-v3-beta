@@ -48,6 +48,42 @@ OFFICE_TYPES: Dict[str, List[str]] = {
     'office_other': OTHER_OFFICE_EXTENSIONS,
 }
 
+# ---------------------------------------------------------------------------
+# Round 11: video. EXACT duplicates only -- byte-for-byte, per extension.
+#
+# The families below are containers, not codecs: two files are compared only
+# when they share BOTH the extension and every byte, so an .mp4 is never
+# offered as a duplicate of a .mov, and a re-encode (H.264 -> H.265, 720p ->
+# 1080p, another bitrate, another audio track) is by definition NOT a match.
+#
+# Deliberately NOT listed:
+#   * .ts  -- the extension is shared with TypeScript sources, so a "video"
+#             scan of a development folder would hash thousands of code files.
+#   * .m4a / .mka / .mp3 / .wav -- audio, not video.
+#   * .iso -- a disc image, reachable through "Other Files".
+# All three stay reachable through the "Other Files" entry, which accepts any
+# extension the user types.
+MP4_EXTENSIONS = ['.mp4', '.m4v']          # ISO-BMFF (incl. the Apple variant)
+MOV_EXTENSIONS = ['.mov']                  # QuickTime
+MKV_EXTENSIONS = ['.mkv']                  # Matroska
+AVI_EXTENSIONS = ['.avi']
+WMV_EXTENSIONS = ['.wmv', '.asf']          # Windows Media
+MPEG_EXTENSIONS = ['.mpg', '.mpeg', '.m2v', '.m2ts', '.mts', '.vob']
+WEB_VIDEO_EXTENSIONS = ['.webm', '.ogv']
+OTHER_VIDEO_EXTENSIONS = ['.flv', '.f4v', '.3gp', '.3g2', '.rm', '.rmvb',
+                          '.divx', '.mxf', '.insv']
+
+VIDEO_TYPES: Dict[str, List[str]] = {
+    'mp4': MP4_EXTENSIONS,
+    'mov': MOV_EXTENSIONS,
+    'mkv': MKV_EXTENSIONS,
+    'avi': AVI_EXTENSIONS,
+    'wmv': WMV_EXTENSIONS,
+    'mpeg': MPEG_EXTENSIONS,
+    'web': WEB_VIDEO_EXTENSIONS,
+    'video_other': OTHER_VIDEO_EXTENSIONS,
+}
+
 ARCHIVE_TYPES: Dict[str, List[str]] = {
     'zip': ['.zip'],
     'rar': ['.rar'],
@@ -71,6 +107,7 @@ def all_extensions(types: Dict[str, List[str]]) -> List[str]:
 
 OFFICE_EXTENSIONS = all_extensions(OFFICE_TYPES)
 ARCHIVE_EXTENSIONS = all_extensions(ARCHIVE_TYPES)
+VIDEO_EXTENSIONS = all_extensions(VIDEO_TYPES)
 
 
 
@@ -83,6 +120,31 @@ ARCHIVE_EXTENSIONS = all_extensions(ARCHIVE_TYPES)
 #   report_prefix      : report file name prefix (images keep "duplicates").
 # ---------------------------------------------------------------------------
 SECTIONS: Dict[str, Dict[str, object]] = {
+    # Round 11: video -- EXACT duplicates only (same extension + same size +
+    # same full-file SHA-256). No content/perceptual matching of any kind: a
+    # re-encode, a remux, another resolution, bitrate or audio track is by
+    # definition NOT a duplicate here. 'engine' routes this section to
+    # VideoDuplicateDetector instead of the generic non-image flow.
+    'video': {
+        'label_key': 'categories.videos',
+        'engine': 'video',
+        'recycle_subfolder': 'duplicates-video',
+        'report_prefix': 'duplicate_video',
+        'report_title_key': 'reports.video_duplicates_title',
+        'found_key': 'video_operations.found_files',
+        'no_duplicates_key': 'video_operations.no_duplicates_found',
+        'options': [
+            ('mp4', MP4_EXTENSIONS, 'video_operations.mp4'),
+            ('mov', MOV_EXTENSIONS, 'video_operations.mov'),
+            ('mkv', MKV_EXTENSIONS, 'video_operations.mkv'),
+            ('avi', AVI_EXTENSIONS, 'video_operations.avi'),
+            ('wmv', WMV_EXTENSIONS, 'video_operations.wmv'),
+            ('mpeg', MPEG_EXTENSIONS, 'video_operations.mpeg'),
+            ('web', WEB_VIDEO_EXTENSIONS, 'video_operations.web'),
+            ('video_other', OTHER_VIDEO_EXTENSIONS, 'video_operations.other_formats'),
+            ('all', VIDEO_EXTENSIONS, 'video_operations.all'),
+        ],
+    },
     'office': {
         'label_key': 'categories.office',
         'recycle_subfolder': 'duplicates-office',

@@ -121,11 +121,12 @@ class MainCLI:
                 elif choice_int == 1:
                     self.image_cli.run()
                 elif choice_int == 2:
-                    # Round 9: video processing is deliberately POSTPONED -- it
-                    # needs its own metadata source (duration/resolution/codec)
-                    # and its own performance profile, which is a season of work
-                    # on its own. The section stays visible but honest.
-                    self._show_coming_soon()
+                    # Round 11: video does real work now -- EXACT duplicates only
+                    # (same extension + same size + same full-file SHA-256).
+                    # Content similarity (re-encodes, remuxes, other resolutions
+                    # or bitrates) is a separate future subsystem and is NOT
+                    # implied by this entry; the section says so in its menu.
+                    self._run_section('video')
                 elif choice_int == 3:
                     self._run_section('office')
                 elif choice_int == 4:
@@ -173,6 +174,11 @@ class MainCLI:
             operation_handler.handle_duplicate_files(section_key, extensions, option_id)
 
     def _show_coming_soon(self):
-        """Show coming soon message."""
+        """Show coming soon message.
+
+        Round 11: no longer used by the video entry (it runs the exact-duplicate
+        flow now). Kept as the shared "not implemented yet" answer for any
+        future stub entry, so a postponed feature stays visible and honest.
+        """
         self.console.print(f"\n[yellow]{i18n.get('common.coming_soon')}[/yellow]")
         input(i18n.get('common.press_any_key'))
