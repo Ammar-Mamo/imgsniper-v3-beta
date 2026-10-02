@@ -145,7 +145,7 @@ class VideoDuplicateDetector(DuplicateDetector):
         """
         console.print(f"[blue]{i18n.get('common.scanning')}[/blue]")
 
-        all_files = collect_files(folders, extensions)
+        all_files = collect_files(folders, extensions, console)
         console.print(f"[green]{i18n.get(spec['found_key']).format(len(all_files))}[/green]")
         console.print(f"[dim]{i18n.get('common.video_exact_only')}[/dim]")
 

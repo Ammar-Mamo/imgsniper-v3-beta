@@ -10,7 +10,10 @@ from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeEl
 
 from .config import config
 from .i18n.i18n import i18n
-from ..utils.helpers.file_utils import get_all_images, move_to_recycle_bin, reset_session_folder, handle_protected_files_with_user_choice
+from ..utils.helpers.file_utils import (get_all_images, move_to_recycle_bin,
+                                        reset_session_folder,
+                                        handle_protected_files_with_user_choice,
+                                        announce_scan_skips, reset_scan_skips)
 from ..utils.helpers.image_codec import read_dimensions
 from ..utils.helpers.scan_modes import scan_mode_manager
 from ..utils.reports.report_generator import ReportGenerator
@@ -98,10 +101,13 @@ class ImageAnalyzer:
         console.print(f"[dim]{self._get_system_info()}[/dim]")
         
         # جلب جميع صورةs
+        # Round 12: same skip transparency as the other flows.
+        reset_scan_skips()
         all_images = []
         for folder in folders:
             images = get_all_images(folder, self.supported_formats)
             all_images.extend(images)
+        announce_scan_skips(console)
         if not all_images:
             console.print(f"[red]{i18n.get('common.no_images_found')}[/red]")
             return

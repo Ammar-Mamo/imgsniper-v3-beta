@@ -13,6 +13,82 @@ significant defect, `P3` = hygiene.
 
 ---
 
+## Round 12
+
+### Fix — the scan filters stopped being silent, and got a one-button "Recovery Mode"
+
+The user asked a fair question: *"is there a size limit on the videos you
+compare?"* There was — and it was not the only one. `filters.*` has governed
+**every** section since round 4 wired it into the single scanner
+(`get_all_images()` → `collect_files()`):
+
+| filter | shipped value | effect |
+|---|---|---|
+| `max_file_size_mb` | **500** | any file above 500 MB is never scanned |
+| `min_file_size_bytes` | 1024 | anything smaller is never scanned |
+| `exclude_patterns` | `*.tmp` `*.temp` **`*_backup*`** `*.bak` | matching NAMES are never scanned |
+| `include_hidden` | false | hidden files and files inside hidden folders are never scanned |
+| `include_system` | false | system files are never scanned |
+
+None of it was announced. The concrete failure this round reproduces in a test:
+a folder holding **four byte-identical videos** — `clip.mp4`,
+`clip_backup.mp4`, `.hidden_a.mp4`, `.hidden_a (1).mp4` — reported
+**"no duplicate video files found"**, because one copy matched `*_backup*` and
+two were hidden. For someone cleaning up after a data-recovery run, where
+recovered files are routinely named `*_backup*` and written into hidden
+folders, that is the most expensive possible answer: the tool says the library
+is clean while the duplicates are still there.
+
+**Two changes, both reversible, neither changing what the shipped defaults do:**
+
+1. **Transparency.** The scanner now counts every file it drops and why
+   (`too_large`, `too_small`, `excluded_pattern`, `hidden`, `system`,
+   `unreadable`, `not_regular`, `own_output`), and every flow prints ONE summary
+   per operation:
+
+   ```
+   ⚠️ 3 file(s) were NOT scanned because of the scan filters
+      (not duplicates - simply never looked at):
+        - 1 matched an exclude_patterns entry (*.tmp, *.temp, *_backup*, *.bak)
+        - 2 hidden (filters.include_hidden = false)
+        Tip: Settings → Recovery Mode scans these files too ...
+   ```
+
+   All six scan flows do this: image duplicates, similar images, corrupted
+   images, small images, the office/archives/other sections and video. Counting
+   is free (no extra `stat`), and when nothing was skipped nothing is printed.
+
+2. **Settings → Recovery Mode** (new menu item 5). One action writes
+   `RECOVERY_FILTERS`: `max_file_size_mb = 0` (no cap), `exclude_patterns = []`,
+   `include_hidden = true`. The same action turns it back off and restores
+   `DEFAULT_FILTERS` exactly. After every toggle the resulting filter values are
+   printed, and the settings panel shows the current state, so the effect is
+   never a guess. The active state is **derived from the values**, not from a
+   separate flag, so the menu cannot claim a state `settings.json` does not
+   have.
+
+Both profiles live as constants in `config.py` next to `DEFAULT_PRIORITY_ORDER`
+(one source of truth), and the suite asserts `DEFAULT_FILTERS` still mirrors the
+shipped `filters.*` block, so the two can never drift apart.
+
+**Deliberately NOT changed:** `include_system` stays `false` in Recovery Mode
+too — "System Volume Information" and `$RECYCLE.BIN` are not user data, and a
+tool that moves files must never wander into them. `min_file_size_bytes` stays
+1024 (sub-KB stubs are noise, not media), though it is reported when it fires.
+
+### Tests
+
+`tests/test_fixes_round12.py` (57 assertions): the profiles cannot drift from
+`settings.json`; menu item 5 flips exactly the three keys it owns **through the
+real settings loop** and restores them **byte-identically**; the menu entry and the status line exist; the
+four-identical-copies folder reports zero duplicates under the defaults and two
+groups under Recovery Mode; the per-reason counters are exact; all six flows
+announce their skips (including the small-image flow, which builds its own
+Console); an unfiltered folder prints no warning at all; and an end-to-end
+recovery run keeps `clip.mp4` / `.hidden_a.mp4`, moves `clip_backup.mp4` and
+`.hidden_a (1).mp4` into `duplicates-video`, and documents them in a report.
+`run_all.py` now runs **13 suites**; all green, ruff clean.
+
 ## Round 11
 
 ### Feature — the Video section now does real work: EXACT duplicates, byte for byte

@@ -24,7 +24,10 @@ from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeEl
 
 from ...core.config import config
 from ..i18n.i18n import i18n
-from ...utils.helpers.file_utils import get_all_images, move_to_recycle_bin, reset_session_folder, handle_protected_files_with_user_choice
+from ...utils.helpers.file_utils import (get_all_images, move_to_recycle_bin,
+                                         reset_session_folder,
+                                         handle_protected_files_with_user_choice,
+                                         announce_scan_skips, reset_scan_skips)
 from ...utils.helpers.scan_modes import scan_mode_manager
 from ...utils.reports.report_generator import ReportGenerator
 from ..file_categories import collect_files
@@ -75,10 +78,14 @@ class DuplicateDetector:
         console.print(f"[blue]{i18n.get('common.scanning')}[/blue]")
         
         # جلب جميع ملفات الصور
+        # Round 12: count (and announce) what the scan filters skipped, so the
+        # image flow reports the same transparency as every other section.
+        reset_scan_skips()
         all_images = []
         for folder in folders:
             images = get_all_images(folder, self.supported_formats)
             all_images.extend(images)
+        announce_scan_skips(console)
         
         console.print(f"[green]{i18n.get('common.found_images').format(len(all_images))}[/green]")
         
@@ -282,7 +289,7 @@ class DuplicateDetector:
         """
         console.print(f"[blue]{i18n.get('common.scanning')}[/blue]")
 
-        all_files = collect_files(folders, extensions)
+        all_files = collect_files(folders, extensions, console)
         console.print(f"[green]{i18n.get(spec['found_key']).format(len(all_files))}[/green]")
 
         if not all_files:

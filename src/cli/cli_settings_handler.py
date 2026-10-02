@@ -9,7 +9,8 @@ from rich.panel import Panel
 from rich.prompt import IntPrompt, Confirm
 from rich.text import Text
 
-from ..core.config import config, DEFAULT_PRIORITY_ORDER
+from ..core.config import (config, DEFAULT_PRIORITY_ORDER, DEFAULT_FILTERS,
+                           RECOVERY_FILTERS, RECOVERY_TOGGLE_KEYS)
 from ..core.i18n.i18n import i18n
 
 
@@ -48,17 +49,24 @@ class CLISettingsHandler:
             self.console.print(f"  {'✅' if confirm else '❌'} {i18n.get('settings.confirm_delete')}")
             max_files_txt = i18n.get('settings.unlimited') if max_files <= 0 else str(max_files)
             self.console.print(f"  🛂 {i18n.get('settings.max_files')}: {max_files_txt}")
+            # Round 12: the one setting that decides HOW MUCH gets scanned.
+            recovery = self._recovery_mode_active()
+            recovery_txt = i18n.get('settings.recovery_on' if recovery
+                                    else 'settings.recovery_off')
+            self.console.print(f"  {'✅' if recovery else '❌'} "
+                               f"{i18n.get('settings.recovery_status')}: {recovery_txt}")
             self.console.print()
             
             self.console.print(f"1 - {i18n.get('settings.safety')}")
             self.console.print(f"2 - {i18n.get('settings.priorities')}")
             self.console.print(f"3 - {i18n.get('settings.scan_modes')}")
             self.console.print(f"4 - {i18n.get('settings.reset_defaults')}")
+            self.console.print(f"5 - {i18n.get('settings.recovery_mode')}")
             self.console.print(f"0 - {i18n.get('priorities.back')}")
             self.console.print()
             
             try:
-                choice = IntPrompt.ask("", choices=[str(i) for i in range(5)], default="0")
+                choice = IntPrompt.ask("", choices=[str(i) for i in range(6)], default="0")
                 choice_int = int(choice)
                 
                 if choice_int == 0:
@@ -71,6 +79,8 @@ class CLISettingsHandler:
                     self._handle_scan_modes()
                 elif choice_int == 4:
                     self._reset_priorities_to_defaults()
+                elif choice_int == 5:
+                    self._toggle_recovery_mode()
                 
                 if choice_int != 0:
                     input(i18n.get('common.press_any_key'))
@@ -78,6 +88,53 @@ class CLISettingsHandler:
             except KeyboardInterrupt:
                 break
     
+    @staticmethod
+    def _recovery_mode_active() -> bool:
+        """True when the scan filters are the relaxed Recovery Mode values.
+
+        Detected from the VALUES, not from a separate flag: that way the menu
+        cannot claim a state the filters do not actually have (and a user who
+        edits settings.json by hand still sees the truth).
+        """
+        filters = config.get('filters', {}) or {}
+        if not isinstance(filters, dict):
+            return False
+        try:
+            no_cap = int(filters.get('max_file_size_mb', 0) or 0) == 0
+        except (TypeError, ValueError):
+            no_cap = False
+        return (no_cap
+                and bool(filters.get('include_hidden', False))
+                and not (filters.get('exclude_patterns') or []))
+
+    def _toggle_recovery_mode(self):
+        """Round 12: switch the scan filters between the shipped limits and
+        Recovery Mode.
+
+        Recovery Mode is for a library that has just been recovered from a dead
+        disk: every limit that hid a file from a scan is lifted (no size cap,
+        hidden files included, no name exclusions), because "no duplicates
+        found" for a folder that was never really scanned is the most expensive
+        possible answer. include_system stays OFF either way: System Volume
+        Information and $RECYCLE.BIN are not user data.
+        """
+        if self._recovery_mode_active():
+            for key in RECOVERY_TOGGLE_KEYS:
+                config.set(f'filters.{key}', DEFAULT_FILTERS[key])
+            self.console.print(f"[green]{i18n.get('filters.recovery_off').format(DEFAULT_FILTERS['max_file_size_mb'])}[/green]")
+        else:
+            for key in RECOVERY_TOGGLE_KEYS:
+                config.set(f'filters.{key}', RECOVERY_FILTERS[key])
+            self.console.print(f"[green]{i18n.get('filters.recovery_on')}[/green]")
+
+        # Show the resulting state so the effect is never a guess.
+        for key in ('min_file_size_bytes', 'max_file_size_mb', 'exclude_patterns',
+                    'include_hidden', 'include_system'):
+            value = config.get(f'filters.{key}')
+            if isinstance(value, list):
+                value = ', '.join(str(v) for v in value) or '-'
+            self.console.print(f"[dim]   filters.{key} = {value}[/dim]")
+
     def _handle_safety_settings(self):
         """Safety settings submenu (round 8).
 

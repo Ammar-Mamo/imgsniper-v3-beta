@@ -35,6 +35,8 @@ deleting them.
 | **Corrupted-image detection** | Attempts a real decode and flags files that fail. |
 | **Small-image detection** | Flags images below a resolution threshold (default 300×300). |
 | **Reports** | A text report per operation, listing every group, the image kept, the images removed, each file's **full original path** (plus the recycle-bin destination outside dry-run), and a human-readable **reason** for each decision. |
+| **Scan transparency** | Every scan prints how many files the `filters.*` settings kept out and why (too large, hidden, excluded pattern, unreadable…). A folder that was only partly scanned can never be reported as "no duplicates found". |
+| **Recovery Mode** | A one-action switch in **Settings** (item 5) for libraries restored from a dead disk: no size cap, hidden files included, no name exclusions — with the exact filter values echoed after every toggle, and a toggle back to the shipped limits. |
 | **Non-image duplicates** | The **Office**, **Archives**, **Other** and **Video** sections run the same exact-hash duplicate detection for documents, spreadsheets, presentations, PDFs, archives and video containers. Matching is **per extension**, so a `.doc` is never offered as a duplicate of a `.docx` (nor an `.mp4` of a `.mov`). Files with no EXIF and no date in the name fall back to their **modification time**, so the oldest copy is still the one kept. |
 | **Exact video duplicates** | Videos are matched **byte-for-byte only** — same extension + same size + same **full-file SHA-256**. A re-encode (H.264 → H.265), another resolution or bitrate, a remux (MP4 → MKV), another audio/subtitle track, a trim, a crop or a watermark is **not** a duplicate: there is no content/perceptual video matching in this project, and no decoder is installed. A first+last **sample** hash may only rule files *out*; the verdict is always the full-file hash. |
 
@@ -252,7 +254,7 @@ the file at all.
 | `processing` | `scan_mode`, `phash_threshold`, `batch_size`, `max_workers`, `memory_limit_mb`, caching and parallelism |
 | `paths` | `recycle_bin`, `reports`, `temp`, `cache` — all four are excluded from scanning |
 | `similarity` | Similarity grouping settings |
-| `filters` | `exclude_patterns`, `include_hidden`, `include_system`, `min_file_size_bytes`, `max_file_size_mb`. Any numeric filter set to `0` is **disabled**, so a scan can always be widened without a code change |
+| `filters` | `exclude_patterns`, `include_hidden`, `include_system`, `min_file_size_bytes`, `max_file_size_mb`. Any numeric filter set to `0` is **disabled**, so a scan can always be widened without a code change. **Settings → Recovery Mode** rewrites `max_file_size_mb`/`exclude_patterns`/`include_hidden` in one action (and back); whatever it skips is now **reported by every scan** instead of disappearing silently |
 | `safety` | `confirm_before_delete`, `dry_run_mode`, `max_files_per_operation` |
 | `logging` | `level`, `file`, `max_size_mb`, `backup_count`, `format` |
 
@@ -306,7 +308,8 @@ CI gate.
 | `test_fixes_round9.py` | Office/archives/other SHA-256 duplicates, per-extension matching, section menus and reports | 94 |
 | `test_fixes_round10.py` | Full office format coverage: macro/template/OpenDocument/WPS families, PDF+XPS, Visio/Publisher/Access/iWork entry | 46 |
 | `test_fixes_round11.py` | **Exact video duplicates**: 8 video families (24 extensions), size+sample pre-filters with the full-file SHA-256 as the only verdict, per-extension isolation, copy/Arabic-copy/recovery filename heuristics, valid-date preference, deterministic selection, `duplicate_video_<option>_` reports, `duplicates-video` bin, dry-run safety, the full flow through the CLI handler, the inherited size filters, and guard rails proving the image/office/archive flows and the shared filename map are untouched | 181 |
-| | **Total** | **798** |
+| `test_fixes_round12.py` | **Scan-filter transparency + Recovery Mode**: the shipped limits really hide copies (backup-named, hidden, sub-KB), every section reports what it skipped and why, the Settings menu item 5 flips all three filter keys through the real loop and restores them byte-identically, an end-to-end recovery run keeps the originals and bins the copies, and `include_system` stays protected | 57 |
+| | **Total** | **855** |
 
 Per-suite logs are written to the project root (`test_run.log`,
 `verify_e2e.log`, `test_run_round<N>.log`). All are git-ignored.
@@ -367,7 +370,7 @@ src/
     reports/                Report generators and formatters, plus
                             video_duplicate_report_generator.py
 
-tests/                      Twelve suites plus the unified runner (run_all.py)
+tests/                      Thirteen suites plus the unified runner (run_all.py)
 scripts/                    run.bat and maintenance helpers
 
 reports/                    Generated reports   (created at runtime, git-ignored)
@@ -410,14 +413,19 @@ This is a beta. Be aware of the following before relying on it:
   code files. `.m4a`/`.mka` (audio) and `.iso` (disc image) are excluded too.
   All of them stay reachable through **Other Files**, which accepts any
   extension you type.
-- **The shared scan filters apply to videos too.** `collect_files()` honours
-  `filters.min_file_size_bytes` (1024) and `filters.max_file_size_mb`
-  (**500**), so a video larger than 500 MB is **skipped by the scan** and can
-  never be reported — exactly like a huge archive. Raise
-  `filters.max_file_size_mb` (or set it to `0` to disable the limit) if your
-  library holds full-length movies. This is inherited behaviour, not a video
-  special case, and `tests/test_fixes_round11.py` asserts it so it cannot change
-  silently.
+- **The scan filters are real, and now they are visible.** `collect_files()`
+  honours `filters.min_file_size_bytes` (1024), `filters.max_file_size_mb`
+  (**500**), `include_hidden`/`include_system` and `exclude_patterns`
+  (`*.tmp`, `*.temp`, `*_backup*`, `*.bak`) for **every** section — images,
+  office, archives, other and video alike. Round 12 stopped them being silent:
+  every scan now prints how many files it never looked at and why, so "no
+  duplicates found" can never again describe a folder that was never really
+  scanned (the classic case: a copy named `video_backup.mp4`, a hidden file, or
+  a movie over 500 MB).
+  **Settings → Recovery Mode** lifts exactly those limits in one action (no
+  size cap, hidden files included, no name exclusions) and can be turned back
+  off; `include_system` stays off either way, because System Volume Information
+  and `$RECYCLE.BIN` are not user data. Use it after a data-recovery run.
 - **"Duplicate" means byte-identical, by design.** A Word document re-saved by
   another program, or an archive re-compressed with a different tool, holds the
   same content but different bytes and is therefore **not** reported. Detecting
@@ -466,6 +474,14 @@ and the tests that pin it — is in [`CHANGELOG.md`](CHANGELOG.md).
   `نسخة` أو `Recovered`، ثم التاريخ الأقدم الصالح في الاسم، ويُسجَّل سبب كل قرار في
   `reports/duplicate_video_<الخيار>_<الوقت>.txt`، والملف المكرر يُنقل إلى
   `recycle-bin/duplicates-video`.
+- **شفافية الفحص**: كل عملية فحص تُعلن الآن كم ملفًا لم تنظر إليه ولماذا (أكبر من
+  `max_file_size_mb`، أو مطابق لـ `exclude_patterns` مثل `*_backup*`، أو مخفي، أو أصغر
+  من 1024 بايت، أو تعذّرت قراءته). لم يعد «لا مكررات» جوابًا عن مجلد لم يُفحص أصلًا.
+- **وضع الاسترجاع** (الإعدادات ← البند 5): زرّ واحد يرفع الحدود الثلاثة التي كانت
+  تُخفي الملفات — بلا حدّ للحجم، مع الملفات المخفية، وبلا استثناء للأسماء — ويعيد
+  القيم الأصلية عند إطفائه، ويطبع القيم الفعلية بعد كل تبديل. `include_system` يبقى
+  مُطفأً دائمًا لأن «System Volume Information» و«$RECYCLE.BIN» ليست بيانات مستخدم.
+  مُستحسن بعد استرجاع البيانات من قرص تالف.
 
 **التشغيل:** `python main.py` — **التثبيت:** `install_requirements.bat` —
 **الاختبارات:** `python tests/run_all.py`

@@ -39,7 +39,11 @@ ENGLISH_TRANSLATIONS = {
         "confirm_updated": "Confirm Before Delete is now {}",
         "max_files_updated": "Max files per operation set to {}",
         "enabled": "enabled",
-        "disabled": "disabled"
+        "disabled": "disabled",
+        "recovery_status": "🛟 Recovery Mode",
+        "recovery_mode": "🛟 Recovery Mode - scan EVERYTHING (no size cap, hidden files included, no name exclusions)",
+        "recovery_on": "on - every file is scanned (recommended after data recovery)",
+        "recovery_off": "off - the shipped limits apply (max 500 MB, hidden files and *_backup*/*.tmp names are skipped)"
     },
     "image_operations": {
         "corrupted": "Delete Corrupted Images",
@@ -51,6 +55,22 @@ ENGLISH_TRANSLATIONS = {
         "priorities": "Priority Settings",
         "back": "Back",
         "exit": "Exit"
+    },
+    "filters": {
+        "skipped_header": "⚠️ {} file(s) were NOT scanned because of the scan filters (not duplicates - simply never looked at):",
+        "skip_too_large": "{} larger than filters.max_file_size_mb ({} MB)",
+        "skip_too_small": "{} smaller than filters.min_file_size_bytes ({} bytes)",
+        "skip_excluded_pattern": "{} matched an exclude_patterns entry ({})",
+        "skip_hidden": "{} hidden (filters.include_hidden = false)",
+        "skip_system": "{} system files (filters.include_system = false)",
+        "skip_unreadable": "{} unreadable (permissions or a broken link)",
+        "skip_not_regular": "{} not a regular file (folder/link/device)",
+        "skip_own_output": "{} inside ImgSniper's own folders (recycle-bin/reports)",
+        "recovery_hint": "Tip: Settings → Recovery Mode scans these files too (no size cap, hidden files included, no name exclusions).",
+        "recovery_on": "🛟 Recovery Mode ENABLED: no size cap, hidden files are scanned, no name exclusions. Every file in the folders is now considered.",
+        "recovery_off": "🛟 Recovery Mode DISABLED: the shipped limits are back (max {} MB, hidden excluded, name patterns excluded).",
+        "recovery_already_on": "Recovery Mode is already enabled (nothing to change).",
+        "recovery_already_off": "Recovery Mode is already disabled (nothing to change)."
     },
     "video_operations": {
         "found_files": "🎬 Found {} video files",

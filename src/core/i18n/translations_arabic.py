@@ -39,7 +39,11 @@ ARABIC_TRANSLATIONS = {
         "confirm_updated": "التأكيد قبل الحذف الآن: {}",
         "max_files_updated": "تم ضبط الحد الأقصى للملفات على {}",
         "enabled": "مفعّل",
-        "disabled": "معطّل"
+        "disabled": "معطّل",
+        "recovery_status": "🛟 وضع الاسترجاع",
+        "recovery_mode": "🛟 وضع الاسترجاع - فحص كل شيء (بلا حدّ للحجم، مع الملفات المخفية، وبلا استثناء للأسماء)",
+        "recovery_on": "مُفعّل - يُفحص كل ملف (مُستحسن بعد استرجاع البيانات)",
+        "recovery_off": "مُعطّل - الحدود الأصلية مطبَّقة (الحد 500 ميجابايت، والمخفية وأسماء مثل *_backup* تُتخطّى)"
     },
     "image_operations": {
         "corrupted": "حذف الصور التالفة",
@@ -51,6 +55,22 @@ ARABIC_TRANSLATIONS = {
         "priorities": "إعدادات الأولويات",
         "back": "العودة",
         "exit": "خروج"
+    },
+    "filters": {
+        "skipped_header": "⚠️ {} ملف لم يُفحص بسبب مرشّحات الفحص (ليست مكررة - بل لم تُفحص أصلًا):",
+        "skip_too_large": "{} أكبر من filters.max_file_size_mb ({} ميجابايت)",
+        "skip_too_small": "{} أصغر من filters.min_file_size_bytes ({} بايت)",
+        "skip_excluded_pattern": "{} طابق نمطًا في exclude_patterns ({})",
+        "skip_hidden": "{} مخفي (filters.include_hidden = false)",
+        "skip_system": "{} ملف نظام (filters.include_system = false)",
+        "skip_unreadable": "{} تعذّرت قراءته (أذونات أو رابط تالف)",
+        "skip_not_regular": "{} ليس ملفًا عاديًا (مجلد/رابط/جهاز)",
+        "skip_own_output": "{} داخل مجلدات البرنامج (recycle-bin/reports)",
+        "recovery_hint": "تلميح: الإعدادات ← وضع الاسترجاع يفحص هذه الملفات أيضًا (بلا حدّ للحجم، مع الملفات المخفية، وبلا استثناء للأسماء).",
+        "recovery_on": "🛟 تم تفعيل وضع الاسترجاع: بلا حدّ للحجم، وتُفحص الملفات المخفية، وبلا استثناء للأسماء.",
+        "recovery_off": "🛟 تم تعطيل وضع الاسترجاع: عادت الحدود الأصلية (الحد {} ميجابايت، والمخفية مستثناة، وأنماط الأسماء مستثناة).",
+        "recovery_already_on": "وضع الاسترجاع مُفعّل أصلًا (لا تغيير).",
+        "recovery_already_off": "وضع الاسترجاع مُعطّل أصلًا (لا تغيير)."
     },
     "video_operations": {
         "found_files": "🎬 تم العثور على {} ملف فيديو",

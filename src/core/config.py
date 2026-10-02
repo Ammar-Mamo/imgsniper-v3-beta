@@ -17,6 +17,38 @@ from typing import Dict, Any
 # [2, 3, 1, 4] => date(1) > resolution(2) > size(3) > filename(4).
 DEFAULT_PRIORITY_ORDER = [2, 3, 1, 4]
 
+# ---------------------------------------------------------------------------
+# Round 12: canonical filter values, defined ONCE here (same reasoning as
+# DEFAULT_PRIORITY_ORDER) so the "Recovery Mode" toggle and the shipped
+# settings.json can never drift apart.
+#
+# DEFAULT_FILTERS mirrors the filters.* section of config/settings.json exactly.
+# RECOVERY_FILTERS is what the toggle writes: every limit that silently hid a
+# file from a scan is lifted, because after a data-recovery run the user's whole
+# point is to see EVERYTHING -- a 4 GB movie, a "video_backup.mp4", a file in a
+# hidden folder. include_system deliberately stays False: "System Volume
+# Information" and "$RECYCLE.BIN" are not user data, and a tool that moves files
+# must never wander into them.
+# ---------------------------------------------------------------------------
+DEFAULT_FILTERS = {
+    'min_file_size_bytes': 1024,
+    'max_file_size_mb': 500,
+    'exclude_patterns': ['*.tmp', '*.temp', '*_backup*', '*.bak'],
+    'include_hidden': False,
+    'include_system': False,
+}
+
+RECOVERY_FILTERS = {
+    'min_file_size_bytes': 1024,      # sub-KB stubs are noise, not media
+    'max_file_size_mb': 0,            # 0 = no upper limit at all
+    'exclude_patterns': [],           # never hide a file because of its name
+    'include_hidden': True,           # recovery tools write into hidden folders
+    'include_system': False,          # ...but system areas stay off limits
+}
+
+# The filters Recovery Mode actually changes, in menu-display order.
+RECOVERY_TOGGLE_KEYS = ('max_file_size_mb', 'exclude_patterns', 'include_hidden')
+
 class Config:
     """Configuration manager for the application."""
     

@@ -27,7 +27,7 @@ import os
 import shutil
 import stat as stat_module
 from pathlib import Path
-from typing import List, Set
+from typing import Dict, List, Set
 
 from ...core.config import config
 from ...core.i18n.i18n import i18n
@@ -232,6 +232,137 @@ def _matches_exclude_pattern(name: str, patterns: List[str]) -> bool:
     return any(fnmatch.fnmatchcase(lowered, p.lower()) for p in patterns)
 
 
+# ---------------------------------------------------------------------------
+# Round 12: scan-filter transparency.
+#
+# Every filter below is legitimate, but until now they were SILENT: a 4 GB movie
+# (max_file_size_mb), a "video_backup.mp4" (exclude_patterns) or a file in a
+# hidden folder (include_hidden) simply never appeared in any scan, and the user
+# was told "no duplicates found" for a library that was never really looked at.
+# After a data-recovery run that is the worst possible answer.
+#
+# So the single scanner counts every file it drops, and why; the detectors print
+# one honest summary line per operation. Counting is free (no extra stat) and
+# nothing about WHICH files are scanned changes -- this only makes existing
+# behaviour visible. "Recovery Mode" in Settings lifts the limits themselves.
+# ---------------------------------------------------------------------------
+# reason -> (i18n key, English fallback, Arabic fallback), following the
+# project's _honest_reason() convention: never show "[Missing: ...]".
+SKIP_REASONS = {
+    'too_large': ('filters.skip_too_large',
+                  '{} larger than filters.max_file_size_mb ({} MB)',
+                  '{} أكبر من filters.max_file_size_mb ({} ميجابايت)'),
+    'too_small': ('filters.skip_too_small',
+                  '{} smaller than filters.min_file_size_bytes ({} bytes)',
+                  '{} أصغر من filters.min_file_size_bytes ({} بايت)'),
+    'excluded_pattern': ('filters.skip_excluded_pattern',
+                         '{} matched an exclude_patterns entry ({})',
+                         '{} طابق نمطًا في exclude_patterns ({})'),
+    'hidden': ('filters.skip_hidden',
+               '{} hidden (filters.include_hidden = false)',
+               '{} مخفي (filters.include_hidden = false)'),
+    'system': ('filters.skip_system',
+               '{} system files (filters.include_system = false)',
+               '{} ملف نظام (filters.include_system = false)'),
+    'unreadable': ('filters.skip_unreadable',
+                   '{} unreadable (permissions or a broken link)',
+                   '{} تعذّرت قراءته (أذونات أو رابط تالف)'),
+    'not_regular': ('filters.skip_not_regular',
+                    '{} not a regular file (folder/link/device)',
+                    '{} ليس ملفًا عاديًا (مجلد/رابط/جهاز)'),
+    'own_output': ('filters.skip_own_output',
+                   "{} inside ImgSniper's own folders (recycle-bin/reports)",
+                   '{} داخل مجلدات البرنامج (recycle-bin/reports)'),
+}
+
+# Print order: the reasons a user can actually act on come first.
+SKIP_REASON_ORDER = ('too_large', 'excluded_pattern', 'hidden', 'system',
+                     'too_small', 'unreadable', 'not_regular', 'own_output')
+
+_SCAN_SKIPS = {reason: 0 for reason in SKIP_REASONS}
+
+
+def reset_scan_skips() -> None:
+    """Zero the skip counters at the START of one scan operation."""
+    for reason in _SCAN_SKIPS:
+        _SCAN_SKIPS[reason] = 0
+
+
+def count_skip(reason: str) -> None:
+    """Record one file dropped by a scan filter (unknown reasons are ignored)."""
+    if reason in _SCAN_SKIPS:
+        _SCAN_SKIPS[reason] += 1
+
+
+def get_scan_skips() -> Dict[str, int]:
+    """A copy of the per-reason skip counts collected since the last reset."""
+    return dict(_SCAN_SKIPS)
+
+
+def _skip_text(key: str, english: str, arabic: str) -> str:
+    """Localized text with a hard-coded fallback (never "[Missing: ...]")."""
+    try:
+        value = i18n.get(key)
+    except Exception:                                  # pragma: no cover
+        value = None
+    if value and not str(value).startswith('[Missing'):
+        return str(value)
+    return arabic if i18n.current_language == 'ar' else english
+
+
+def announce_scan_skips(console) -> int:
+    """Print WHY files were skipped; returns how many. Silent when none were.
+
+    Called once per operation by every detector (images, office, archives,
+    other and video), so no section can quietly scan less than the folder holds.
+    """
+    skips = get_scan_skips()
+    total = sum(skips.values())
+    if not total or console is None:
+        return total
+
+    filters = config.get('filters', {}) or {}
+    if not isinstance(filters, dict):
+        filters = {}
+    max_mb = filters.get('max_file_size_mb', 0) or 0
+    min_bytes = filters.get('min_file_size_bytes', 0) or 0
+    patterns = ', '.join(filters.get('exclude_patterns') or []) or '-'
+
+    header = _skip_text(
+        'filters.skipped_header',
+        '⚠️ {} file(s) were NOT scanned because of the scan filters '
+        '(not duplicates - simply never looked at):',
+        '⚠️ {} ملف لم يُفحص بسبب مرشّحات الفحص (ليست مكررة - بل لم تُفحص أصلًا):')
+    console.print(f"[yellow]{header.format(total)}[/yellow]")
+
+    for reason in SKIP_REASON_ORDER:
+        count = skips.get(reason, 0)
+        if not count:
+            continue
+        key, english, arabic = SKIP_REASONS[reason]
+        line = _skip_text(key, english, arabic)
+        try:
+            if reason == 'too_large':
+                line = line.format(count, max_mb)
+            elif reason == 'too_small':
+                line = line.format(count, min_bytes)
+            elif reason == 'excluded_pattern':
+                line = line.format(count, patterns)
+            else:
+                line = line.format(count)
+        except (IndexError, KeyError, ValueError):     # pragma: no cover
+            line = f"{count} ({reason})"
+        console.print(f"[dim]     - {line}[/dim]")
+
+    console.print("[dim]     " + _skip_text(
+        'filters.recovery_hint',
+        'Tip: Settings → Recovery Mode scans these files too '
+        '(no size cap, hidden files included, no name exclusions).',
+        'تلميح: الإعدادات ← وضع الاسترجاع يفحص هذه الملفات أيضًا '
+        '(بلا حدّ للحجم، مع الملفات المخفية، وبلا استثناء للأسماء).') + "[/dim]")
+    return total
+
+
 def get_all_images(folder_path: str, supported_formats: Set[str]) -> List[str]:
     """
     Get all image files from a folder and its subfolders.
@@ -284,8 +415,10 @@ def get_all_images(folder_path: str, supported_formats: Set[str]) -> List[str]:
         try:
             st = file_path.stat()
         except OSError:
-            continue                      # broken symlink / permission denied
+            count_skip('unreadable')      # broken symlink / permission denied
+            continue
         if not stat_module.S_ISREG(st.st_mode):
+            count_skip('not_regular')
             continue
 
         # Never rescan ImgSniper's own output. Without this, files already
@@ -297,6 +430,7 @@ def get_all_images(folder_path: str, supported_formats: Set[str]) -> List[str]:
             except OSError:
                 resolved_text = os.path.normcase(str(file_path.absolute()))
             if _is_excluded(resolved_text, excluded_prefixes):
+                count_skip('own_output')
                 continue
 
         if not include_hidden or not include_system:
@@ -311,17 +445,22 @@ def get_all_images(folder_path: str, supported_formats: Set[str]) -> List[str]:
                 hidden = hidden or anc_hidden
                 system = system or anc_system
             if hidden and not include_hidden:
+                count_skip('hidden')
                 continue
             if system and not include_system:
+                count_skip('system')
                 continue
 
         if exclude_patterns and _matches_exclude_pattern(file_path.name,
                                                         exclude_patterns):
+            count_skip('excluded_pattern')
             continue
 
         if min_size and st.st_size < min_size:
+            count_skip('too_small')
             continue
         if max_size and st.st_size > max_size:
+            count_skip('too_large')
             continue
 
         image_files.append(str(file_path))

@@ -14,7 +14,8 @@ Why a registry and not scattered lists:
 
 from typing import Dict, List
 
-from ..utils.helpers.file_utils import get_all_images
+from ..utils.helpers.file_utils import (get_all_images, announce_scan_skips,
+                                        reset_scan_skips)
 
 # ---------------------------------------------------------------------------
 # Extension tables
@@ -229,7 +230,7 @@ def normalize_extensions(raw: str) -> List[str]:
     return found
 
 
-def collect_files(folders: List[str], extensions) -> List[str]:
+def collect_files(folders: List[str], extensions, console=None) -> List[str]:
     """Every file with one of `extensions` inside `folders` (recursive).
 
     Reuses get_all_images() -- deliberately: it applies the filters.* section
@@ -237,12 +238,18 @@ def collect_files(folders: List[str], extensions) -> List[str]:
     importantly, never returns files inside ImgSniper's own recycle-bin /
     reports directories, so a file moved there can never be scanned and moved
     again on the next run.
+
+    Round 12: when `console` is given, one scan = one transparent summary of the
+    files the filters skipped, so a section can never quietly look at less than
+    the folder holds. The counters are reset HERE, at the start of the scan.
     """
     wanted = {str(ext).lower() for ext in (extensions or []) if ext}
     if not wanted:
         return []
 
+    reset_scan_skips()
     found: List[str] = []
     for folder in folders or []:
         found.extend(get_all_images(folder, wanted))
+    announce_scan_skips(console)
     return found
