@@ -147,7 +147,7 @@
     "filters": {
         "_comment": "مرشحات الملفات",
         "min_file_size_bytes": 1024,
-        "max_file_size_mb": 500,
+        "max_file_size_mb": 0,
         "min_resolution": {
             "width": 50,
             "height": 50
@@ -156,20 +156,15 @@
             "width": 50000,
             "height": 50000
         },
-        "exclude_patterns": [
-            "*.tmp",
-            "*.temp",
-            "*_backup*",
-            "*.bak"
-        ],
-        "include_hidden": false,
+        "exclude_patterns": [],
+        "include_hidden": true,
         "include_system": false
     },
     "safety": {
         "_comment": "إعدادات الأمان",
         "confirm_before_delete": true,
         "max_files_per_operation": 0,
-        "dry_run_mode": false,
+        "dry_run_mode": true,
         "_note": "create_backup and preserve_originals were REMOVED (audit P3-8). Neither was ever read by any code, yet both implied an active safety mechanism - a false guarantee. They were also redundant by design: ImgSniper NEVER permanently deletes, it MOVES files into paths.recycle_bin preserving their folder structure, so every removed file stays recoverable and the file kept for each group is by definition the preserved original. A safety toggle that cannot actually be turned off was removed rather than wired up."
     },
     "logging": {
