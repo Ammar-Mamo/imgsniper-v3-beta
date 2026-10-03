@@ -19,6 +19,12 @@ _CFG_BYTES = _CFG_FILE.read_bytes() if _CFG_FILE.exists() else None
 if _CFG_BYTES is not None:
     atexit.register(lambda: _CFG_FILE.write_bytes(_CFG_BYTES))
 
+# Round 13: judge the CODE, not whatever the user left in settings.json.
+# Recovery Mode + dry-run are legitimate live states (Settings offers both),
+# and inheriting them made this suite report failures that were not defects.
+from _config_pin import pin_shipped_config                      # noqa: E402
+pin_shipped_config(path=_CFG_FILE)   # bytes/mtime baselines are captured below
+
 LOG_FILE = ROOT / 'test_run_round4.log'
 
 # Same safety net main.py applies: this console is cp1256 and the suite logs

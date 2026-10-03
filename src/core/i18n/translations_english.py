@@ -134,6 +134,7 @@ ENGLISH_TRANSLATIONS = {
         "searching": "🔍 Searching for matches...",
         "deleting": "🗑️ Deleting...",
         "report_saved": "📄 Report saved to: {}",
+        "report_failed": "⚠️ The operation COMPLETED and the files were already handled, but the report could not be saved: {}. No file was lost - only the written summary is missing.",
         "completed": "✅ Done! Press any key to continue...",
         "cancelled": "❌ Operation cancelled.",
         "similarity_scan_complete": "Similarity scan complete: {} images processed, {} similar images found in {} groups",

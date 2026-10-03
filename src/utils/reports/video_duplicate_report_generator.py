@@ -32,6 +32,7 @@ from ...core.i18n.i18n import i18n
 from ...utils.helpers.system_monitor import system_monitor
 from .report_formatter import ReportFormatter
 from .image_info_extractor import format_extracted_date
+from . import unique_report_path
 
 
 class VideoDuplicateReportGenerator:
@@ -49,14 +50,13 @@ class VideoDuplicateReportGenerator:
         scan can be started twice back to back (a dry run and then the real one),
         and losing the first report would make a run unauditable, so a numeric
         suffix is added only when the name is already taken.
+
+        Round 13: the guard this method invented for videos now lives in
+        `unique_report_path()` and every writer uses it, so the implementation
+        exists once instead of twice.
         """
-        base = f"{prefix}_{safe_option}_{timestamp}"
-        candidate = self.reports_dir / f"{base}.txt"
-        counter = 1
-        while candidate.exists():
-            candidate = self.reports_dir / f"{base}_{counter}.txt"
-            counter += 1
-        return candidate
+        return unique_report_path(self.reports_dir,
+                                  f"{prefix}_{safe_option}_{timestamp}.txt")
 
     # ------------------------------------------------------------------
     @staticmethod

@@ -340,8 +340,15 @@ class VideoDuplicateDetector(DuplicateDetector):
         self._print_deletion_footer(console, deleted_files, protected_count,
                                     force_deleted_count, subfolder)
 
-        report_path = self.video_report_generator.generate_video_duplicates_report(
-            duplicates, deleted_files, all_files_info, moved_map, spec,
-            option_id, selections)
-        console.print(f"[green]{i18n.get('common.report_saved').format(report_path)}[/green]")
+        try:
+            report_path = self.video_report_generator.generate_video_duplicates_report(
+                duplicates, deleted_files, all_files_info, moved_map, spec,
+                option_id, selections)
+            console.print(f"[green]{i18n.get('common.report_saved').format(report_path)}[/green]")
+        except Exception as report_error:
+            # Round 13: never let a report failure mask the completed operation.
+            logging.warning('Video report could not be saved after a completed operation: %s',
+                            report_error)
+            console.print(
+                f"[yellow]{i18n.get('common.report_failed').format(report_error)}[/yellow]")
         console.print(f"[green]{i18n.get('common.completed')}[/green]")

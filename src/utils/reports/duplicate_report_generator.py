@@ -12,6 +12,7 @@ from ...core.i18n.i18n import i18n
 from ...utils.helpers.system_monitor import system_monitor
 from .report_formatter import ReportFormatter
 from .image_info_extractor import ImageInfoExtractor, format_extracted_date
+from . import unique_report_path
 
 
 class DuplicateReportGenerator:
@@ -76,7 +77,6 @@ class DuplicateReportGenerator:
         """
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         prefix = 'duplicates' if spec is None else spec.get('report_prefix', 'duplicates')
-        report_path = self.reports_dir / f"{prefix}_{timestamp}.txt"
 
         title_key = 'reports.duplicates_title' if spec is None else spec.get('report_title_key', 'reports.duplicates_title')
         kept_key = 'reports.kept_image' if spec is None else 'reports.kept_file'
@@ -100,6 +100,14 @@ class DuplicateReportGenerator:
             if spec is not None and not (info.get('width') and info.get('height')):
                 return
             f.write(f"  📐 Dimensions: {info['width']}x{info['height']}\n")
+
+        # Round 13: unique_report_path() re-creates the folder right before the
+        # write and never overwrites an existing report. Both mattered here: a
+        # reports/ folder removed during a long scan used to turn a COMPLETED
+        # operation into "❌ Error" + no report, and an image scan plus a section
+        # scan in the same second both produce "duplicates_<ts>.txt" and used to
+        # silently replace each other.
+        report_path = unique_report_path(self.reports_dir, f"{prefix}_{timestamp}.txt")
 
         with open(report_path, 'w', encoding='utf-8') as f:
             f.write(i18n.get(title_key) + "\n")

@@ -27,7 +27,8 @@ class ReportGenerator:
         if not reports_path or not isinstance(reports_path, str):
             reports_path = 'reports'
         self.reports_dir = Path.cwd() / reports_path
-        self.reports_dir.mkdir(exist_ok=True)
+        # parents=True so a nested paths.reports ("reports/2026") also works.
+        self.reports_dir.mkdir(parents=True, exist_ok=True)
         
         # تهيئة خاصized مولدs
         self.info_extractor = ImageInfoExtractor()

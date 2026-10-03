@@ -309,7 +309,8 @@ CI gate.
 | `test_fixes_round10.py` | Full office format coverage: macro/template/OpenDocument/WPS families, PDF+XPS, Visio/Publisher/Access/iWork entry | 46 |
 | `test_fixes_round11.py` | **Exact video duplicates**: 8 video families (24 extensions), size+sample pre-filters with the full-file SHA-256 as the only verdict, per-extension isolation, copy/Arabic-copy/recovery filename heuristics, valid-date preference, deterministic selection, `duplicate_video_<option>_` reports, `duplicates-video` bin, dry-run safety, the full flow through the CLI handler, the inherited size filters, and guard rails proving the image/office/archive flows and the shared filename map are untouched | 181 |
 | `test_fixes_round12.py` | **Scan-filter transparency + Recovery Mode**: the shipped limits really hide copies (backup-named, hidden, sub-KB), every section reports what it skipped and why, the Settings menu item 5 flips all three filter keys through the real loop and restores them byte-identically, an end-to-end recovery run keeps the originals and bins the copies, and `include_system` stays protected | 57 |
-| | **Total** | **855** |
+| `test_fixes_round13.py` | **Report durability**: every writer re-creates `reports/` immediately before writing (a folder deleted mid-run used to end a COMPLETED 36528-file cleanup in `❌ Error: [Errno 2]` with no report), no report ever overwrites another in the same second, a report failure is a warning that never masks the operation (AST-verified at all six call sites), and the suites pin the configuration they judge instead of inheriting Recovery Mode / dry-run | 77 |
+| | **Total** | **932** |
 
 Per-suite logs are written to the project root (`test_run.log`,
 `verify_e2e.log`, `test_run_round<N>.log`). All are git-ignored.

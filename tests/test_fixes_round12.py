@@ -34,6 +34,16 @@ def _restore_cfg():
 if _CFG_BYTES is not None:
     atexit.register(_restore_cfg)
 
+# Round 13: judge the PINNED shipped state, not the user's live bytes. This
+# suite is the one that OWNS Recovery Mode, and a machine mid-cleanup keeps it
+# ON -- inheriting that made every assertion below (including "DEFAULT_FILTERS
+# mirrors the shipped filters.* values") fail without any code defect.
+# _BASE_BYTES is the baseline for the byte-identity assertions in sections B/D;
+# _restore_cfg() still writes the user's own bytes back at exit (section F).
+from _config_pin import pin_shipped_config                      # noqa: E402
+_BASE_BYTES = pin_shipped_config(path=_CFG_FILE) or _CFG_BYTES
+_CFG0 = json.loads(_BASE_BYTES.decode('utf-8')) if _BASE_BYTES else {}
+
 for _stream in (sys.stdout, sys.stderr):
     try:
         _stream.reconfigure(errors='replace')
@@ -149,7 +159,7 @@ P('the off message names the restored cap',
   str(DEFAULT_FILTERS['max_file_size_mb']) in off_out)
 P('the active state is false again', handler._recovery_mode_active() is False)
 P('a full on/off round trip leaves settings.json byte-identical',
-  _CFG_FILE.read_bytes() == _CFG_BYTES)
+  _CFG_FILE.read_bytes() == _BASE_BYTES)
 
 # The menu itself: the entry exists, is numbered, and the status is shown.
 menu_console = console()
@@ -194,7 +204,7 @@ CLISettingsHandler(real_console2).handle_settings_menu()
 csh.IntPrompt.ask = orig_int_ask
 P('menu item 5 again turns it back off and restores the shipped filters',
   {key: config.get('filters.' + key) for key in DEFAULT_FILTERS} == DEFAULT_FILTERS
-  and _CFG_FILE.read_bytes() == _CFG_BYTES)
+  and _CFG_FILE.read_bytes() == _BASE_BYTES)
 
 # --------------------------------------------------------------------------
 SEP('C. The reported bug: a copy hidden by a filter = "no duplicates found"')
@@ -420,7 +430,7 @@ expected_scanned = sorted(p.name for p in clean_dir.iterdir())
 P('the default filters still scan the ordinary files (behaviour unchanged)',
   clean_found['total_scanned'] == len(expected_scanned), clean_found['total_scanned'])
 P('settings.json is still byte-identical',
-  _CFG_FILE.read_bytes() == _CFG_BYTES)
+  _CFG_FILE.read_bytes() == _BASE_BYTES)
 P('images are still scanned through the same single scanner',
   len(collect_files([str(clean_dir)], ['.mp4'])) == 2)
 

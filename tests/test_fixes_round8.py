@@ -35,6 +35,15 @@ def _restore_cfg():
 if _CFG_BYTES is not None:
     atexit.register(_restore_cfg)
 
+# Round 13: judge the CODE, not whatever the user left in settings.json.
+# A real cleanup runs with Recovery Mode ON and dry_run_mode ON, and inheriting
+# those live values made this suite report failures that were not defects.
+from _config_pin import pin_shipped_config                      # noqa: E402
+# Baseline for this suite's byte-identity assertions: the PINNED shipped state,
+# not the user's prior bytes (a machine in Recovery Mode differs by design).
+# _restore_cfg() still puts the user's own bytes back at exit.
+_BASE_BYTES = pin_shipped_config(path=_CFG_FILE) or _CFG_BYTES
+
 for _stream in (sys.stdout, sys.stderr):
     try:
         _stream.reconfigure(errors='replace')
@@ -83,8 +92,10 @@ import src.cli.cli_settings_handler as csh                           # noqa: E40
 MB = 1024 * 1024
 TEST_DIR = Path(__import__('tempfile').mkdtemp(prefix='imgsniper_round8_'))
 
-# Original safety/paths values (settings.json bytes are the source of truth).
-_CFG0 = json.loads(_CFG_BYTES.decode('utf-8')) if _CFG_BYTES else {}
+# Original safety/paths values. Round 13: the PINNED baseline is the source of
+# truth, not the user's live bytes -- a machine mid-cleanup has dry_run_mode
+# ON, and inheriting that made the "real move" sections below judge a dry run.
+_CFG0 = json.loads(_BASE_BYTES.decode('utf-8')) if _BASE_BYTES else {}
 DR0 = _CFG0.get('safety', {}).get('dry_run_mode', False)
 MAXF0 = _CFG0.get('safety', {}).get('max_files_per_operation', 0)
 RBIN0 = _CFG0.get('paths', {}).get('recycle_bin', 'recycle-bin')

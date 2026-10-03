@@ -11,6 +11,7 @@ from typing import List, Dict, Any
 from ...utils.helpers.system_monitor import system_monitor
 from .report_formatter import ReportFormatter
 from .image_info_extractor import format_extracted_date
+from . import unique_report_path
 
 
 class SmallImagesReportGenerator:
@@ -28,8 +29,11 @@ class SmallImagesReportGenerator:
         show only the original paths.
         """
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        report_path = self.reports_dir / f"small_images_{timestamp}.txt"
-        
+        # Round 13: unique_report_path() re-creates the folder right before the
+        # write and never overwrites an existing report (see
+        # corrupted_report_generator for the failure this prevents).
+        report_path = unique_report_path(self.reports_dir, f"small_images_{timestamp}.txt")
+
         with open(report_path, 'w', encoding='utf-8') as f:
             f.write(f"{self.formatter.get_text('small_title')}\n")
             f.write("=" * 60 + "\n")

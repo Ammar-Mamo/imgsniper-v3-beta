@@ -2,6 +2,7 @@
 Image analysis functionality for dimensions and properties
 """
 
+import logging
 from pathlib import Path
 from typing import List, Dict, Any
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -272,6 +273,13 @@ class ImageAnalyzer:
             console.print(f"[yellow]{i18n.get('protected_files.files_skipped_highly_protected').format(protected_count)}[/yellow]")
         
         # توليد تقرير
-        report_path = self.report_generator.generate_small_images_report(deleted_files, all_files_info, min_width, min_height, moved_map)
-        console.print(f"[green]{i18n.get('common.report_saved').format(report_path)}[/green]")
+        try:
+            report_path = self.report_generator.generate_small_images_report(deleted_files, all_files_info, min_width, min_height, moved_map)
+            console.print(f"[green]{i18n.get('common.report_saved').format(report_path)}[/green]")
+        except Exception as report_error:
+            # Round 13: never let a report failure mask the completed operation.
+            logging.warning('Small-images report could not be saved after a completed operation: %s',
+                            report_error)
+            console.print(
+                f"[yellow]{i18n.get('common.report_failed').format(report_error)}[/yellow]")
         console.print(f"[green]{i18n.get('common.completed')}[/green]")

@@ -13,6 +13,87 @@ significant defect, `P3` = hygiene.
 
 ---
 
+## Round 13
+
+### Fix — reports survived nothing: a deleted `reports/` folder turned a finished cleanup into "❌ Error"
+
+A real run reported this:
+
+```
+✅ Total processed: 36528 files (36528 regular + 0 force deleted)
+❌ Error: [Errno 2] No such file or directory:
+   'C:\...\imgsniper-v3-beta\reports\duplicates_2026-10-03_11-31-50.txt'
+```
+
+The cleanup had **already finished** — every file was moved — and then the
+report write failed. `reports/` was created exactly once, in
+`ReportGenerator.__init__` at program start, and the folder had been removed
+while the scan was running (nothing in the project deletes it; `rmtree` appears
+only in `config.py`'s temp-file cleanup and `shutil.move` in `file_utils`). The
+`FileNotFoundError` escaped `delete_*()` and reached the CLI's generic
+`except Exception`, so a **successful** operation was announced as an error,
+`common.completed` never printed, and the documentation of what had been moved
+was lost.
+
+Three defects, three fixes:
+
+1. **The folder is re-created at write time.** A new shared helper,
+   `src/utils/reports/__init__.py::unique_report_path()`, is now the single
+   place where a report name becomes a path, and it does
+   `mkdir(parents=True, exist_ok=True)` immediately before the caller opens the
+   file. All five writers route through it (corrupted, duplicate/section,
+   similarity ×2, small images), `ReportGenerator.__init__` also gained
+   `parents=True` so a nested `paths.reports` works, and
+   `video_duplicate_report_generator._unique_path()` now delegates to the helper
+   instead of keeping a second copy of the same logic.
+
+2. **No report overwrites another.** Every writer names its file
+   `{prefix}_{timestamp}.txt` with one-second resolution, so two operations in
+   the same second silently replaced each other — an image scan and a section
+   scan that falls back to the `duplicates` prefix collide by construction, and
+   a dry run followed by the real run collides too. The video writer had invented
+   a numeric-suffix guard for exactly this in round 11 (its docstring even
+   described the shared writer's flaw); the guard now belongs to everyone, so
+   the second report becomes `..._1.txt` and both survive.
+
+3. **A report failure is a warning, never the verdict.** All six call sites
+   (`corruption_detector`, `duplicate_detector` ×2, `video_duplicate_detector`,
+   `similarity_processor`, `image_analyzer`) wrap the report call: the cause goes
+   to `logging.warning` and the user gets the new `common.report_failed`
+   (EN/AR) — *"the operation COMPLETED and the files were already handled, but
+   the report could not be saved … No file was lost"* — while
+   `common.completed` still prints. `image_analyzer` and `similarity_processor`
+   gained the `logging` import they lacked.
+
+### Fix — the suites judged the user's live settings instead of the code
+
+With Recovery Mode ON and `dry_run_mode` ON (a legitimate live state — that is
+what Settings offers, and a real post-recovery cleanup runs with both), rounds
+**4, 8, 11 and 12 failed** with messages that read like code defects:
+`exclude_patterns "*_backup*" is applied`, `real move returns the full
+destination FILE path -- dry_run`, `the shipped default leaves ordinary movies
+inside the scan (500 MB)`, `DEFAULT_FILTERS mirrors the shipped filters.* values
+exactly`. Nothing was wrong with the code.
+
+`tests/_config_pin.py::pin_shipped_config()` now pins `filters.*` and
+`safety.dry_run_mode` before a suite judges them, writes that baseline to disk
+and returns its bytes, so the "settings.json is byte-identical again" assertions
+compare against the **pinned** baseline instead of the user's prior bytes
+(toggling Recovery Mode OFF writes the shipped defaults by design, so those
+bytes differ). `_restore_cfg()` still puts the user's own bytes back at exit —
+verified: after a full 14-suite run the live file is byte-identical to what the
+user left.
+
+`tests/test_fixes_round13.py` (77 assertions) deletes `reports/` after startup
+and asserts all five report types are written anyway, that a same-second second
+report gets its own file, that the six call sites are guarded (AST-verified:
+handler prints `common.report_failed`, logs the cause, and `common.completed`
+sits outside the `try`), and that a raising writer does not escape
+`delete_corrupted_images()`. `run_all.py` now runs 14 suites; all green with the
+machine in Recovery Mode + dry-run, ruff clean.
+
+---
+
 ## Round 12
 
 ### Fix — the scan filters stopped being silent, and got a one-button "Recovery Mode"

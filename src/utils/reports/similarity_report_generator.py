@@ -12,6 +12,7 @@ from ...core.i18n.i18n import i18n
 from ...utils.helpers.system_monitor import system_monitor
 from .report_formatter import ReportFormatter
 from .image_info_extractor import ImageInfoExtractor, format_extracted_date
+from . import unique_report_path
 
 
 class SimilarityReportGenerator:
@@ -30,8 +31,11 @@ class SimilarityReportGenerator:
         show only the original paths.
         """
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        report_path = self.reports_dir / f"similar_{timestamp}.txt"
-        
+        # Round 13: unique_report_path() re-creates the folder right before the
+        # write and never overwrites an existing report (see
+        # corrupted_report_generator for the failure this prevents).
+        report_path = unique_report_path(self.reports_dir, f"similar_{timestamp}.txt")
+
         with open(report_path, 'w', encoding='utf-8') as f:
             f.write(i18n.get('reports.similar_title') + "\n")
             f.write("=" * 60 + "\n")
@@ -136,8 +140,11 @@ class SimilarityReportGenerator:
         show only the original paths.
         """
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        report_path = self.reports_dir / f"similar_{timestamp}.txt"
-        
+        # Round 13: unique_report_path() re-creates the folder right before the
+        # write and never overwrites an existing report (see
+        # corrupted_report_generator for the failure this prevents).
+        report_path = unique_report_path(self.reports_dir, f"similar_{timestamp}.txt")
+
         with open(report_path, 'w', encoding='utf-8') as f:
             f.write(i18n.get('reports.similar_title') + "\n")
             f.write("=" * 60 + "\n")

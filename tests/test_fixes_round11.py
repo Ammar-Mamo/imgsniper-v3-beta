@@ -35,6 +35,20 @@ def _restore_cfg():
 if _CFG_BYTES is not None:
     atexit.register(_restore_cfg)
 
+# Round 13: judge the CODE, not whatever the user left in settings.json.
+# A real cleanup runs with Recovery Mode ON (no size cap, hidden files, no name
+# exclusions) and dry_run_mode ON; inheriting those live values made this suite
+# report failures that were not code defects.
+from _config_pin import pin_shipped_config                      # noqa: E402
+# Round 13: judge the PINNED shipped state, not the user's live bytes. A real
+# cleanup runs with Recovery Mode ON (max_file_size_mb=0, no exclude_patterns,
+# include_hidden) and dry_run_mode ON; inheriting those made this suite report
+# "the shipped default leaves ordinary movies inside the scan (500 MB)" and
+# "every removed copy landed in the VIDEO recycle bin" as failures.
+# _restore_cfg() still writes the user's own bytes back at exit.
+_BASE_BYTES = pin_shipped_config(path=_CFG_FILE) or _CFG_BYTES
+_CFG0 = json.loads(_BASE_BYTES.decode('utf-8')) if _BASE_BYTES else {}
+
 for _stream in (sys.stdout, sys.stderr):
     try:
         _stream.reconfigure(errors='replace')

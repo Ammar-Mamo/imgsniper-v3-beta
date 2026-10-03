@@ -426,9 +426,16 @@ class DuplicateDetector:
         self._print_deletion_footer(console, deleted_files, protected_count,
                                     force_deleted_count, subfolder)
 
-        report_path = self.report_generator.generate_file_duplicates_report_with_info(
-            duplicates, deleted_files, all_files_info, moved_map, spec)
-        console.print(f"[green]{i18n.get('common.report_saved').format(report_path)}[/green]")
+        try:
+            report_path = self.report_generator.generate_file_duplicates_report_with_info(
+                duplicates, deleted_files, all_files_info, moved_map, spec)
+            console.print(f"[green]{i18n.get('common.report_saved').format(report_path)}[/green]")
+        except Exception as report_error:
+            # Round 13: never let a report failure mask the completed operation.
+            logging.warning('Section report could not be saved after a completed operation: %s',
+                            report_error)
+            console.print(
+                f"[yellow]{i18n.get('common.report_failed').format(report_error)}[/yellow]")
         console.print(f"[green]{i18n.get('common.completed')}[/green]")
 
     def delete_duplicate_images(self, result: Dict[str, Any], console: Console, file_selector):
@@ -473,6 +480,13 @@ class DuplicateDetector:
                                     force_deleted_count)
 
         # توليد تقرير with pre-collected inتنسيقion
-        report_path = self.report_generator.generate_duplicates_report_with_info(duplicates, deleted_files, all_files_info, moved_map)
-        console.print(f"[green]{i18n.get('common.report_saved').format(report_path)}[/green]")
+        try:
+            report_path = self.report_generator.generate_duplicates_report_with_info(duplicates, deleted_files, all_files_info, moved_map)
+            console.print(f"[green]{i18n.get('common.report_saved').format(report_path)}[/green]")
+        except Exception as report_error:
+            # Round 13: never let a report failure mask the completed operation.
+            logging.warning('Duplicate-images report could not be saved after a completed operation: %s',
+                            report_error)
+            console.print(
+                f"[yellow]{i18n.get('common.report_failed').format(report_error)}[/yellow]")
         console.print(f"[green]{i18n.get('common.completed')}[/green]")

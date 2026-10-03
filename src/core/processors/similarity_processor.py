@@ -4,6 +4,7 @@ Similar image processing and deletion functionality
 # وحدة معالجة الصور - ينفذ العمليات على الصور المكتشفة
 
 
+import logging
 from pathlib import Path
 from typing import Dict, List, Any
 from rich.console import Console
@@ -116,6 +117,13 @@ class SimilarityProcessor:
                 similar_groups_dict[f"group_{i+1}"] = group
         
         # توليد تقرير with pre-collected inتنسيقion
-        report_path = self.report_generator.generate_similar_report_with_info(similar_groups_dict, deleted_files, all_files_info, moved_map)
-        console.print(f"[green]{i18n.get('common.report_saved').format(report_path)}[/green]")
+        try:
+            report_path = self.report_generator.generate_similar_report_with_info(similar_groups_dict, deleted_files, all_files_info, moved_map)
+            console.print(f"[green]{i18n.get('common.report_saved').format(report_path)}[/green]")
+        except Exception as report_error:
+            # Round 13: never let a report failure mask the completed operation.
+            logging.warning('Similar-images report could not be saved after a completed operation: %s',
+                            report_error)
+            console.print(
+                f"[yellow]{i18n.get('common.report_failed').format(report_error)}[/yellow]")
         console.print(f"[green]{i18n.get('common.completed')}[/green]")

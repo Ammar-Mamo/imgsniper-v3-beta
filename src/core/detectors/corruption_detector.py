@@ -263,6 +263,16 @@ class CorruptionDetector:
             console.print(f"[yellow]{i18n.get('protected_files.files_skipped_highly_protected').format(protected_count)}[/yellow]")
         
         # توليد تقرير
-        report_path = self.report_generator.generate_corrupted_report(deleted_files, moved_map)
-        console.print(f"[green]{i18n.get('common.report_saved').format(report_path)}[/green]")
+        try:
+            report_path = self.report_generator.generate_corrupted_report(deleted_files, moved_map)
+            console.print(f"[green]{i18n.get('common.report_saved').format(report_path)}[/green]")
+        except Exception as report_error:
+            # Round 13: the cleanup above already FINISHED. A report failure must
+            # never surface as the operation's error -- that is how a real
+            # 36528-file run ended in "❌ Error: [Errno 2] ...reports\x.txt" with
+            # no report, after every file had already been moved.
+            logging.warning('Report could not be saved after a completed operation: %s',
+                            report_error)
+            console.print(
+                f"[yellow]{i18n.get('common.report_failed').format(report_error)}[/yellow]")
         console.print(f"[green]{i18n.get('common.completed')}[/green]")

@@ -11,6 +11,7 @@ from typing import Dict, List
 from ...core.i18n.i18n import i18n
 from ...utils.helpers.system_monitor import system_monitor
 from .report_formatter import ReportFormatter
+from . import unique_report_path
 
 
 class CorruptedReportGenerator:
@@ -28,8 +29,14 @@ class CorruptedReportGenerator:
         show only the original paths.
         """
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        report_path = self.reports_dir / f"corrupted_{timestamp}.txt"
-        
+        # Round 13: unique_report_path() re-creates the folder IMMEDIATELY before
+        # the write and never overwrites an existing report. The folder used to
+        # be created only once at startup, so a reports/ folder removed during a
+        # long scan made every write fail with [Errno 2] -- and because the
+        # exception escaped delete_corrupted_images(), a COMPLETED cleanup was
+        # shown to the user as "❌ Error" with no report at all.
+        report_path = unique_report_path(self.reports_dir, f"corrupted_{timestamp}.txt")
+
         with open(report_path, 'w', encoding='utf-8') as f:
             f.write(i18n.get('reports.corrupted_title') + "\n")
             f.write("=" * 60 + "\n")
