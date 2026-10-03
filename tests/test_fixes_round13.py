@@ -35,6 +35,20 @@ sys.path.insert(0, str(ROOT / 'tests'))
 _CFG_FILE = ROOT / 'config' / 'settings.json'
 _CFG_BYTES = _CFG_FILE.read_bytes() if _CFG_FILE.exists() else None
 
+# Round 14 follow-up: this suite must never touch the REAL reports/ folder.
+# The user's own reports live there (real cleanup runs wrote a 26 MB duplicates
+# report and a 34 MB similar one), and an earlier version of section A deleted
+# the whole folder to reproduce "reports/ disappeared mid-run". Everything below
+# now happens inside a throwaway sandbox, and the real folder is snapshotted so
+# the suite can PROVE at the end that it left it alone.
+from src.core.config import config                              # noqa: E402
+
+_REAL_REPORTS = ROOT / 'reports'
+_REAL_REPORTS_BEFORE = (sorted(p.name for p in _REAL_REPORTS.glob('*'))
+                        if _REAL_REPORTS.exists() else None)
+_REPORTS_SANDBOX = Path(tempfile.mkdtemp(prefix='r13_reports_'))
+_REPORTS_SETTING_BEFORE = config.get('paths.reports', 'reports')
+
 
 def _restore_cfg():
     if _CFG_BYTES is not None:
@@ -82,11 +96,23 @@ def console():
 
 
 def drop_reports_dir():
-    """Remove reports/ the way a user cleaning up the project would."""
-    target = ROOT / 'reports'
-    if target.exists():
-        shutil.rmtree(target, ignore_errors=True)
-    return target
+    """Point `paths.reports` at a throwaway sandbox, then delete THAT.
+
+    This suite originally called shutil.rmtree() on the project's REAL reports/
+    folder to reproduce "the folder disappeared mid-run". That destroyed the
+    user's own reports -- a 26 MB duplicates report and a 34 MB similar one, the
+    audit trail of real cleanup runs -- and rmtree() bypasses the Recycle Bin,
+    so they were unrecoverable. A test must never delete what the user owns.
+
+    The code path under test does not care WHERE the folder lives: every writer
+    re-creates whatever `paths.reports` resolves to, immediately before opening
+    the file. Relocating the setting therefore reproduces the exact precondition
+    (folder missing at write time) without touching a single byte of user data.
+    """
+    config.set('paths.reports', str(_REPORTS_SANDBOX))
+    if _REPORTS_SANDBOX.exists():
+        shutil.rmtree(_REPORTS_SANDBOX, ignore_errors=True)
+    return _REPORTS_SANDBOX
 
 
 # --------------------------------------------------------------------------
@@ -122,8 +148,8 @@ _img_a.write_bytes(b'x' * 2048)
 _img_b.write_bytes(b'x' * 2048)
 
 drop_reports_dir()
-P('reports/ is really gone before the run (the reported precondition)',
-  not (ROOT / 'reports').exists())
+P('the reports folder is really gone before the run (the reported precondition)',
+  not _REPORTS_SANDBOX.exists())
 
 rg = ReportGenerator()
 info = {str(_img_a): rg.get_detailed_image_info(str(_img_a)),
@@ -144,7 +170,7 @@ for kind, path in written.items():
     P(f'the {kind} report was written even though reports/ had been deleted',
       bool(path) and Path(path).exists(), path)
 
-P('the folder was re-created by the writers themselves', (ROOT / 'reports').is_dir())
+P('the folder was re-created by the writers themselves', _REPORTS_SANDBOX.is_dir())
 P('every report is a non-empty text file',
   all(Path(p).stat().st_size > 0 for p in written.values()))
 P('the corrupted report still carries its title and the file list',
@@ -170,11 +196,11 @@ P('the first report was NOT overwritten',
   or Path(_img_path).stat().st_size > 0)
 
 _taken = Path(_img_path).name
-_third = unique_report_path(ROOT / 'reports', _taken)
+_third = unique_report_path(_REPORTS_SANDBOX, _taken)
 P('unique_report_path() never hands back a name that is already taken',
   _third.name != _taken and not _third.exists(), _third.name)
 P('unique_report_path() returns the name unchanged when it is free',
-  unique_report_path(ROOT / 'reports', 'never_used_name.txt').name == 'never_used_name.txt')
+  unique_report_path(_REPORTS_SANDBOX, 'never_used_name.txt').name == 'never_used_name.txt')
 
 video_src = read_src('src/utils/reports/video_duplicate_report_generator.py')
 P('the video writer delegates to the shared helper (one implementation, not two)',
@@ -263,7 +289,7 @@ detector = CorruptionDetector()
 
 def _boom(*args, **kwargs):
     raise FileNotFoundError(2, 'No such file or directory',
-                            str(ROOT / 'reports' / 'corrupted_x.txt'))
+                            str(_REPORTS_SANDBOX / 'corrupted_x.txt'))
 
 
 detector.report_generator.generate_corrupted_report = _boom
@@ -350,13 +376,30 @@ try:
 except OSError:
     pass
 shutil.rmtree(work, ignore_errors=True)
+
+# Round 14 follow-up: put `paths.reports` back and drop the sandbox, then PROVE
+# the user's real reports/ folder was never touched. This is the regression
+# guard for the version of this suite that deleted it.
+config.set('paths.reports', _REPORTS_SETTING_BEFORE)
+shutil.rmtree(_REPORTS_SANDBOX, ignore_errors=True)
+P('the sandbox reports folder is gone', not _REPORTS_SANDBOX.exists())
+P('paths.reports points at the user setting again',
+  config.get('paths.reports', 'reports') == _REPORTS_SETTING_BEFORE,
+  config.get('paths.reports', 'reports'))
+
+_real_now = (sorted(p.name for p in _REAL_REPORTS.glob('*'))
+             if _REAL_REPORTS.exists() else None)
+P('the REAL reports/ folder was never touched by this suite',
+  _real_now == _REAL_REPORTS_BEFORE,
+  (set(_real_now or []) ^ set(_REAL_REPORTS_BEFORE or [])))
+
 _restore_cfg()
 P('settings.json is byte-identical again', _CFG_FILE.read_bytes() == _CFG_BYTES)
-P('no test report was left behind',
+P('no test report was left behind in the real reports/ folder',
   not any(p.name.startswith(('corrupted_2', 'duplicates_2', 'similar_2',
                              'small_images_2', 'never_used_name'))
-          for p in (ROOT / 'reports').glob('*.txt'))
-  if (ROOT / 'reports').exists() else True)
+          for p in _REAL_REPORTS.glob('*.txt'))
+  if _REAL_REPORTS.exists() else True)
 
 print('')
 print('=' * 70)
