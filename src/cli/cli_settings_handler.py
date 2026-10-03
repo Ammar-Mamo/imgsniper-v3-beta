@@ -12,6 +12,7 @@ from rich.text import Text
 from ..core.config import (config, DEFAULT_PRIORITY_ORDER, DEFAULT_FILTERS,
                            RECOVERY_FILTERS, RECOVERY_TOGGLE_KEYS)
 from ..core.i18n.i18n import i18n
+from ..utils.helpers.console_input import flush_pending_input, pause
 
 
 class CLISettingsHandler:
@@ -66,6 +67,7 @@ class CLISettingsHandler:
             self.console.print()
             
             try:
+                flush_pending_input()
                 choice = IntPrompt.ask("", choices=[str(i) for i in range(6)], default="0")
                 choice_int = int(choice)
                 
@@ -83,7 +85,7 @@ class CLISettingsHandler:
                     self._toggle_recovery_mode()
                 
                 if choice_int != 0:
-                    input(i18n.get('common.press_any_key'))
+                    pause(i18n.get('common.press_any_key'))
                     
             except KeyboardInterrupt:
                 break
@@ -171,6 +173,7 @@ class CLISettingsHandler:
             self.console.print()
             
             try:
+                flush_pending_input()
                 choice = IntPrompt.ask("", choices=[str(i) for i in range(4)], default="0")
                 choice_int = int(choice)
                 
@@ -187,6 +190,7 @@ class CLISettingsHandler:
                     state = i18n.get('settings.enabled') if not current else i18n.get('settings.disabled')
                     self.console.print(f"[green]{i18n.get('settings.confirm_updated').format(state)}[/green]")
                 elif choice_int == 3:
+                    flush_pending_input()
                     new_max = IntPrompt.ask(i18n.get('settings.enter_max_files'), default=max_files)
                     new_max_int = int(new_max)
                     if new_max_int < 0:
@@ -195,7 +199,7 @@ class CLISettingsHandler:
                     self.console.print(f"[green]{i18n.get('settings.max_files_updated').format(new_max_int)}[/green]")
                 
                 if choice_int != 0:
-                    input(i18n.get('common.press_any_key'))
+                    pause(i18n.get('common.press_any_key'))
                     
             except KeyboardInterrupt:
                 break
@@ -206,6 +210,7 @@ class CLISettingsHandler:
         Deliberately does NOT touch the safety.* settings: silently switching
         dry-run off for a user who relies on it would be dangerous.
         """
+        flush_pending_input()
         if Confirm.ask(i18n.get('priorities.confirm_reset')):
             config.set('priorities.resolution_priority', True)
             config.set('priorities.size_priority', True)
@@ -257,6 +262,7 @@ class CLISettingsHandler:
             
             try:
                 # Round 8: scan modes + reset moved to the main settings menu.
+                flush_pending_input()
                 choice = IntPrompt.ask("", choices=[str(i) for i in range(6)], default="0")
                 choice_int = int(choice)
                 
@@ -280,6 +286,7 @@ class CLISettingsHandler:
                     if not isinstance(current, int):
                         current = 5
                     self.console.print(f"{i18n.get('priorities.threshold_info')}")
+                    flush_pending_input()
                     new_threshold = IntPrompt.ask(i18n.get('priorities.enter_threshold'), default=current)
                     new_threshold_int = int(new_threshold)
                     if 0 <= new_threshold_int <= 64:
@@ -293,7 +300,7 @@ class CLISettingsHandler:
                     # program-wide settings menu.
                 
                 if choice_int != 0:
-                    input(i18n.get('common.press_any_key'))
+                    pause(i18n.get('common.press_any_key'))
                     
             except KeyboardInterrupt:
                 break
@@ -315,6 +322,7 @@ class CLISettingsHandler:
             for i, priority_type in enumerate(priorities):
                 current_pos = new_order[i]
                 self.console.print(f"Current: {i18n.get(f'priorities.{priority_type}')} = Position {current_pos}")
+                flush_pending_input()
                 new_pos = IntPrompt.ask(
                     i18n.get('priorities.enter_new_order').format(i18n.get(f'priorities.{priority_type}')),
                     choices=['1', '2', '3', '4'],
@@ -331,6 +339,7 @@ class CLISettingsHandler:
 
             self.console.print(f"[red]{i18n.get('priorities.order_duplicate_error')}[/red]")
             self.console.print(f"[yellow]{new_order} -> each position 1-4 must be used exactly once.[/yellow]")
+            flush_pending_input()
             if not Confirm.ask(i18n.get('priorities.order_retry'), default=True):
                 self.console.print(f"[yellow]{i18n.get('common.cancelled')}[/yellow]")
                 return
@@ -372,6 +381,7 @@ class CLISettingsHandler:
             self.console.print()
             
             try:
+                flush_pending_input()
                 choice = IntPrompt.ask(i18n.get('scan_modes.select_mode'), choices=[str(i) for i in range(5)], default="0")
                 choice_int = int(choice)
                 
@@ -383,6 +393,7 @@ class CLISettingsHandler:
                 
                 # Special تحذير for ultra وضع
                 if selected_mode == 'ultra':
+                    flush_pending_input()
                     if not Confirm.ask(i18n.get('scan_modes.warning_ultra')):
                         continue
                 
@@ -391,11 +402,11 @@ class CLISettingsHandler:
                     scan_mode_manager.set_mode(selected_mode)
                     mode_name = modes[selected_mode]['name']
                     self.console.print(f"[green]{i18n.get('scan_modes.mode_selected').format(mode_name)}[/green]")
-                    input(i18n.get('common.press_any_key'))
+                    pause(i18n.get('common.press_any_key'))
                     break
                 else:
                     self.console.print("[red]⚠️ Your system doesn't meet the requirements for this mode![/red]")
-                    input(i18n.get('common.press_any_key'))
+                    pause(i18n.get('common.press_any_key'))
                     
             except KeyboardInterrupt:
                 break

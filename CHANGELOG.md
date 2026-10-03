@@ -13,6 +13,93 @@ significant defect, `P3` = hygiene.
 
 ---
 
+## Round 14
+
+### Fix — the tool looked dead for minutes, and the user's own keystrokes then closed it
+
+A real run (75581 images, two folders, external USB hard disk) produced this:
+
+```
+Do you want to confirm deletion? [y/n]: y
+        <nothing at all -- 0% CPU, flat memory, console dead -- for minutes>
+🔍 Checking file permissions...
+...
+✅ Total processed: 50437 files (50437 regular + 0 force deleted)
+        <dead again>
+ [0/1/2/3/4/5/6/7] (0):
+PS C:\...>          <-- the program had exited
+```
+
+Nothing was hung. Two phases were doing honest, necessary work with **zero**
+feedback:
+
+| phase | what it actually does | scale in that run |
+|---|---|---|
+| after `y` | `select_best_file()` per group — each image opened **three times** (`read_dimensions`, `_group_pixel_counts`, then the EXIF date) | 23666 groups / 75581 files ≈ 226k opens |
+| after "Total processed" | report writing for every group | 23666 groups |
+
+The directory walk, the protected-file classification and the per-file info
+collection were silent too. All of it single-threaded and disk-bound — which is
+exactly why Task Manager showed ~0% CPU while the tool was working hardest, and
+why the user concluded it had frozen.
+
+**Then the keystrokes did the damage.** The Windows console *queues* keys pressed
+while the process is busy and hands the whole queue to the next read. The user
+pressed Enter several times at the frozen screen, so once the work resumed:
+
+```python
+input(i18n.get('common.press_any_key'))            # swallowed one Enter, never waited
+IntPrompt.ask("", choices=[0..7], default="0")     # swallowed another -> "0" -> EXIT
+```
+
+A 55-minute scan ended with the program closing "by itself", and the leftover
+Enters were echoed by PowerShell as bare `PS C:\...>` lines. The same queue could
+just as well have answered a **deletion** or **force-delete** confirmation nobody
+typed.
+
+### What changed — feedback only, no logic
+
+Two new helpers, and nothing else:
+
+* **`src/utils/helpers/progress_ui.py`** — `track()` (known total, the project's
+  existing bar style) and `live_counter()` (spinner + running count, for a walk
+  that cannot know its total). Both degrade to silent no-ops when
+  `console=None`, so every existing caller and test behaves exactly as before.
+* **`src/utils/helpers/console_input.py`** — `flush_pending_input()` drains the
+  console key queue (`msvcrt.kbhit`/`getwch` on Windows, `select`+`os.read`
+  elsewhere), refusing to touch a redirected stdin and never raising into a
+  prompt. `ask_line()`/`pause()` drain **then** read.
+
+Wired in: the best-file choice, the info collection and the report writing in
+`similarity_processor`, `duplicate_detector` (images *and* sections),
+`video_duplicate_detector`, `corruption_detector` and `image_analyzer`; the
+protected-file classification in `filter_protected_files()`; the directory walk
+in `collect_files()` and all four image detectors (a new optional `progress_cb`
+on `get_all_images()`, called once per 500 entries — free next to the `stat()`
+each entry already costs). All 14 bare `input()` calls became `pause()`/
+`ask_line()`, and all 21 Rich prompts (`IntPrompt`/`Confirm`/`Prompt.ask`) are
+preceded by a drain. Six hardcoded English status lines became i18n keys
+(`report_writing`, `selecting_best`, `collecting_info`, `checking_permissions`,
+`scanning_files`, `classifying_files`) in EN and AR.
+
+**Deliberately not changed:** selection logic, scoring, thresholds, dry-run and
+deletion behaviour, and report *content*. `file_selector.py`,
+`video_file_selector.py`, `similarity_group_finder.py` and
+`similarity_hash_calculator.py` carry no round-14 wiring at all — asserted by the
+suite. **No cache was added**: the redundant re-opens are now visible and
+countable instead, because a cache would spend disk space on the very machines
+this tool exists to clean. Menu defaults, prompt wording and question order are
+untouched; a prompt now simply waits for a *deliberate* keypress.
+
+`tests/test_fixes_round14.py` (97 assertions) proves the bars really draw and
+really degrade to nothing, that `get_all_images()`,
+`filter_protected_files()` and `_collect_group_info()` return **identical**
+results with and without the new wiring, that no bare `input()` remains and every
+Rich prompt is drained, and that `settings.json` and the user's real reports are
+byte-for-byte untouched. `run_all.py` now runs 15 suites; all green, ruff clean.
+
+---
+
 ## Round 13
 
 ### Fix — reports survived nothing: a deleted `reports/` folder turned a finished cleanup into "❌ Error"

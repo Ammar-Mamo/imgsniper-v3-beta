@@ -156,3 +156,7 @@ desktop.ini
 # Test files
 test_images/
 sample_data/
+
+# Rotated log files (imgsniper.log.1, .2 ...) -- "*.log" above does not match them
+*.log.*
+

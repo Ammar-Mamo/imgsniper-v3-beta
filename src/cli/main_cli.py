@@ -16,6 +16,7 @@ from ..core.config import config
 from ..core.i18n.i18n import i18n
 from .image_cli import ImageCLI
 from .cli_settings_handler import CLISettingsHandler
+from ..utils.helpers.console_input import flush_pending_input, pause
 
 class MainCLI:
     """Main CLI interface."""
@@ -85,6 +86,7 @@ class MainCLI:
         self.console.print()
         
         try:
+            flush_pending_input()
             choice = IntPrompt.ask("", choices=["0", "1", "2"], default="0")
             return int(choice)
         except KeyboardInterrupt:
@@ -113,6 +115,7 @@ class MainCLI:
             self.console.print()
             
             try:
+                flush_pending_input()
                 choice = IntPrompt.ask("", choices=["0", "1", "2", "3", "4", "5", "6", "7"], default="0")
                 choice_int = int(choice)
                 
@@ -181,4 +184,4 @@ class MainCLI:
         future stub entry, so a postponed feature stays visible and honest.
         """
         self.console.print(f"\n[yellow]{i18n.get('common.coming_soon')}[/yellow]")
-        input(i18n.get('common.press_any_key'))
+        pause(i18n.get('common.press_any_key'))

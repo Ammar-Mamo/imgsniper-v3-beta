@@ -13,6 +13,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeEl
 from ...core.config import config
 from ..i18n.i18n import i18n
 from ...utils.helpers.file_utils import move_to_recycle_bin, reset_session_folder, handle_protected_files_with_user_choice
+from ...utils.helpers.progress_ui import track
 from ...utils.reports.report_generator import ReportGenerator
 
 
@@ -32,29 +33,44 @@ class SimilarityProcessor:
         # إعادة تعيين مجلد الجلسة للتشغيل الجديد
         reset_session_folder()
         
+        # Round 14: this loop opens every image of every group THREE times
+        # (dimensions, the resolution boost, then the EXIF date). On a USB hard
+        # disk with 23666 groups that is minutes of real, necessary work -- and
+        # it used to print absolutely nothing, so the console looked dead and
+        # users started pressing keys. The selection logic is untouched; only
+        # its progress is visible now.
         files_to_delete = []
-        for group in similar_groups:
-            if len(group) > 1:
-                # الاحتفاظ بأفضل ملف وتحديد الباقي للحذف
-                best_file = file_selector.select_best_file(group)
-                for file_path in group:
-                    if file_path != best_file:
-                        files_to_delete.append(file_path)
+        with track(console, i18n.get('common.selecting_best'),
+                   len(similar_groups)) as (select_progress, select_task):
+            for group in similar_groups:
+                if len(group) > 1:
+                    # الاحتفاظ بأفضل ملف وتحديد الباقي للحذف
+                    best_file = file_selector.select_best_file(group)
+                    for file_path in group:
+                        if file_path != best_file:
+                            files_to_delete.append(file_path)
+                select_progress.advance(select_task)
         
         # التعامل مع الملفات المحمية مع اختيار المستخدم
-        console.print("[yellow]🔍 Checking file permissions...[/yellow]")
+        console.print(f"[yellow]{i18n.get('common.checking_permissions')}[/yellow]")
         files_to_delete, protected_count, force_deleted_count = handle_protected_files_with_user_choice(
             files_to_delete, console, subfolder="similar"
         )
         
         # جمع معلومات تفصيلية لجميع الملفات قبل الحذف
-        console.print("[yellow]📊 Collecting file information...[/yellow]")
         all_files_info = {}
-        
-        # جلب info for جميع ملفات in similar groups
-        for group in similar_groups:
-            for file_path in group:
-                all_files_info[file_path] = self.report_generator.get_detailed_image_info(file_path)
+
+        # Round 14: a second full pass over every file of every group -- one
+        # header probe plus one EXIF read each. It was silent before, which is
+        # why a run could sit at 0% CPU with no output for minutes. Same values
+        # are collected in the same order; only the count is shown now.
+        _info_total = sum(len(group) for group in similar_groups)
+        with track(console, i18n.get('common.collecting_info'),
+                   _info_total) as (info_progress, info_task):
+            for group in similar_groups:
+                for file_path in group:
+                    all_files_info[file_path] = self.report_generator.get_detailed_image_info(file_path)
+                    info_progress.advance(info_task)
         
         # Add حقيقي similarity بيانات from the أصلي نتيجة
         if 'similarity_data' in result:
@@ -118,7 +134,11 @@ class SimilarityProcessor:
         
         # توليد تقرير with pre-collected inتنسيقion
         try:
-            report_path = self.report_generator.generate_similar_report_with_info(similar_groups_dict, deleted_files, all_files_info, moved_map)
+            # Round 14: writing 23666 groups of detailed entries is the SECOND
+            # silent window of a real run -- it sits right after "Total
+            # processed" and can take minutes with no output at all.
+            with console.status(i18n.get('common.report_writing')):
+                report_path = self.report_generator.generate_similar_report_with_info(similar_groups_dict, deleted_files, all_files_info, moved_map)
             console.print(f"[green]{i18n.get('common.report_saved').format(report_path)}[/green]")
         except Exception as report_error:
             # Round 13: never let a report failure mask the completed operation.

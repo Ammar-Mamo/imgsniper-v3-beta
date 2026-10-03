@@ -38,10 +38,19 @@ logger = logging.getLogger(__name__)
 
 from rich.console import Console
 
+from .progress_ui import track
+from .console_input import ask_line
+
 # Module-level console used for status messages that previously used bare
 # print calls. Rich degrades gracefully on limited code pages / redirected
 # stdout, so emoji/Unicode output can no longer crash file operations.
 _utils_console = Console()
+
+
+# Round 14: how often the directory walk reports its running count. One call
+# per 500 entries is noise next to the stat() every entry already costs, while
+# still updating several times a second on a hard disk.
+_WALK_REPORT_EVERY = 500
 
 
 def _safe_print(message) -> None:
@@ -363,7 +372,8 @@ def announce_scan_skips(console) -> int:
     return total
 
 
-def get_all_images(folder_path: str, supported_formats: Set[str]) -> List[str]:
+def get_all_images(folder_path: str, supported_formats: Set[str],
+                   progress_cb=None) -> List[str]:
     """
     Get all image files from a folder and its subfolders.
 
@@ -375,6 +385,12 @@ def get_all_images(folder_path: str, supported_formats: Set[str]) -> List[str]:
     Every size/attribute filter treats 0 (or a missing/invalid value) as
     "disabled", so the scan can always be widened again from settings.json
     without a code change.
+
+    Round 14: `progress_cb` is optional and purely cosmetic -- it is called with
+    the number of directory entries examined since the previous call, so a walk
+    that covers a whole USB hard disk shows a running count instead of a dead
+    screen. Which files are accepted is decided by exactly the same filters in
+    exactly the same order as before; the callback cannot influence the result.
     """
     image_files = []
     folder = Path(folder_path)
@@ -406,7 +422,15 @@ def get_all_images(folder_path: str, supported_formats: Set[str]) -> List[str]:
     excluded_prefixes = _get_excluded_dir_prefixes()
     _DIR_FLAG_CACHE.clear()
 
+    examined = 0
     for file_path in folder.rglob('*'):
+        examined += 1
+        # Round 14: one call per 500 entries is free next to the stat() each
+        # entry already costs, and it is the difference between a live count and
+        # a screen that looks frozen for minutes on a USB hard disk.
+        if progress_cb is not None and examined % _WALK_REPORT_EVERY == 0:
+            progress_cb(_WALK_REPORT_EVERY)
+
         if file_path.suffix.lower() not in supported_formats:
             continue
 
@@ -464,6 +488,11 @@ def get_all_images(folder_path: str, supported_formats: Set[str]) -> List[str]:
             continue
 
         image_files.append(str(file_path))
+
+    if progress_cb is not None:
+        remainder = examined % _WALK_REPORT_EVERY
+        if remainder:
+            progress_cb(remainder)
 
     return image_files
 
@@ -723,34 +752,50 @@ def force_delete_protected_file(file_path: str, subfolder: str = "protected") ->
         _safe_print(f"❌ {i18n.get('protected_files.force_failed').format(1)}: {file_path}: {e}")
         return False
 
-def filter_protected_files(file_list: list, force_delete: bool = False) -> tuple:
+def filter_protected_files(file_list: list, force_delete: bool = False,
+                           console=None) -> tuple:
     """Filter protected files from a list. 
     Args:
         file_list: List of file paths
         force_delete: If True, try to force delete protected files
+        console: optional; only drives a progress bar (round 14)
     Returns: 
         (available_files, protected_files, force_deletable_files)
+
+    Round 14: classifying touches EVERY file in the list, which on a USB disk
+    with tens of thousands of entries is a visibly long phase that used to print
+    nothing until it finished. The classification itself is untouched -- only its
+    progress is shown, and the per-file notices are collected and printed once
+    the bar closes, because they go through this module's own console and two
+    consoles writing one terminal would tear the live display apart.
     """
     available_files = []
     protected_files = []
     force_deletable_files = []
-    
-    for file_path in file_list:
-        if is_file_protected(file_path):
-            if force_delete:
-                # فحص if we can إمكانيةly قوة delete this ملف
-                if can_force_delete(file_path):
-                    force_deletable_files.append(file_path)
-                    _safe_print(f"🔓 {i18n.get('protected_files.detected_protected').format(1)} ({i18n.get('protected_files.force_delete_option')}): {Path(file_path).name}")
+    pending_notices = []
+
+    with track(console, i18n.get('common.classifying_files'),
+               len(file_list)) as (progress, task):
+        for file_path in file_list:
+            if is_file_protected(file_path):
+                if force_delete:
+                    # فحص if we can إمكانيةly قوة delete this ملف
+                    if can_force_delete(file_path):
+                        force_deletable_files.append(file_path)
+                        pending_notices.append(f"🔓 {i18n.get('protected_files.detected_protected').format(1)} ({i18n.get('protected_files.force_delete_option')}): {Path(file_path).name}")
+                    else:
+                        protected_files.append(file_path)
+                        pending_notices.append(f"⛔ {i18n.get('protected_files.cannot_force_delete').format(1)}: {Path(file_path).name}")
                 else:
                     protected_files.append(file_path)
-                    _safe_print(f"⛔ {i18n.get('protected_files.cannot_force_delete').format(1)}: {Path(file_path).name}")
+                    pending_notices.append(f"⏭️ {i18n.get('protected_files.skipping_readonly')}: {Path(file_path).name}")
             else:
-                protected_files.append(file_path)
-                _safe_print(f"⏭️ {i18n.get('protected_files.skipping_readonly')}: {Path(file_path).name}")
-        else:
-            available_files.append(file_path)
-    
+                available_files.append(file_path)
+            progress.advance(task)
+
+    for notice in pending_notices:
+        _safe_print(notice)
+
     return available_files, protected_files, force_deletable_files
 
 def can_force_delete(file_path: str) -> bool:
@@ -796,7 +841,8 @@ def handle_protected_files_with_user_choice(files_to_delete: list, console, subf
     from ...core.i18n.i18n import i18n
     
     # فحص for protected ملفات
-    available_files, protected_files, force_deletable_files = filter_protected_files(files_to_delete, force_delete=True)
+    available_files, protected_files, force_deletable_files = filter_protected_files(
+        files_to_delete, force_delete=True, console=console)
     
     if not protected_files and not force_deletable_files:
         return available_files, 0, 0
@@ -811,7 +857,10 @@ def handle_protected_files_with_user_choice(files_to_delete: list, console, subf
         console.print(f"[red]{i18n.get('protected_files.force_delete_warning')}[/red]")
         
         try:
-            choice = input(f"{i18n.get('protected_files.force_delete_confirm')} ").strip().lower()
+            # Round 14: drain keys typed while the scan/selection was running, so
+            # a FORCE-DELETE answer is always deliberate -- a buffered Enter from
+            # an impatient keypress must never reach this prompt.
+            choice = ask_line(f"{i18n.get('protected_files.force_delete_confirm')} ").strip().lower()
             
             if choice in ['y', 'yes', 'نعم', 'ن']:
                 console.print(f"[yellow]{i18n.get('protected_files.removing_protection')}[/yellow]")

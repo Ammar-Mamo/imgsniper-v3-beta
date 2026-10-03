@@ -22,6 +22,7 @@ from rich.console import Console
 from ..i18n.i18n import i18n
 from ...utils.helpers.file_utils import (get_all_images, announce_scan_skips,
                                          reset_scan_skips)
+from ...utils.helpers.progress_ui import live_counter
 from ...utils.helpers.image_codec import (
     codec_status, HEIF_EXTENSIONS, RAW_EXTENSIONS,
 )
@@ -59,9 +60,14 @@ class SimilarityDetector:
         # Round 12: same skip transparency as the duplicate/video flows.
         reset_scan_skips()
         all_images = []
-        for folder in folders:
-            images = get_all_images(folder, self.supported_formats)
-            all_images.extend(images)
+        # Round 14: the directory walk now shows a running count. Walking a whole
+        # USB hard disk printed nothing for minutes before -- which is exactly
+        # when users start pressing keys. Which files are found is unchanged.
+        with live_counter(console, i18n.get('common.scanning_files')) as counter:
+            for folder in folders:
+                images = get_all_images(folder, self.supported_formats,
+                                        progress_cb=counter.bump)
+                all_images.extend(images)
         announce_scan_skips(console)
         
         console.print(f"[green]{i18n.get('common.found_images').format(len(all_images))}[/green]")

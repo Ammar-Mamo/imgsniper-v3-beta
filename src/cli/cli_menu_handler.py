@@ -11,6 +11,7 @@ from rich.prompt import Prompt, IntPrompt
 from rich.text import Text
 
 from ..core.i18n.i18n import i18n
+from ..utils.helpers.console_input import flush_pending_input
 
 
 class CLIMenuHandler:
@@ -40,6 +41,7 @@ class CLIMenuHandler:
         self.console.print()
         
         try:
+            flush_pending_input()
             choice = IntPrompt.ask("", choices=[str(i) for i in range(8)], default="0")
             return int(choice)
         except KeyboardInterrupt:
@@ -69,6 +71,7 @@ class CLIMenuHandler:
         self.console.print()
         
         try:
+            flush_pending_input()
             choice = IntPrompt.ask(
                 "", choices=[str(i) for i in range(len(options) + 1)], default="0"
             )
@@ -83,11 +86,13 @@ class CLIMenuHandler:
     def get_folders(self) -> List[str]:
         """Get folder paths from user input."""
         try:
+            flush_pending_input()
             folder_count = IntPrompt.ask(i18n.get('common.folders_count'), default=1)
             folders = []
             
             for i in range(folder_count):
                 while True:  # حلقة للتأكد من إدخال مسار صحيح
+                    flush_pending_input()
                     folder_path = Prompt.ask(i18n.get('common.folder_path').format(i + 1))
                     
                     # التحقق من أن المسار ليس فارغاً

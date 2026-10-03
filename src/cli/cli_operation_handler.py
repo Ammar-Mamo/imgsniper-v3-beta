@@ -10,6 +10,7 @@ from rich.prompt import Confirm, IntPrompt, Prompt
 from ..core.config import config
 from ..core.i18n.i18n import i18n
 from ..core.processors.image_processor import ImageProcessor
+from ..utils.helpers.console_input import flush_pending_input, pause
 
 
 class CLIOperationHandler:
@@ -46,6 +47,7 @@ class CLIOperationHandler:
             self.console.print(
                 f"[red]⛔ {i18n.get('safety.max_files_exceeded').format(file_count, max_files)}[/red]"
             )
+            flush_pending_input()
             if not Confirm.ask(i18n.get('safety.max_files_confirm'), default=False):
                 return False
         
@@ -54,6 +56,7 @@ class CLIOperationHandler:
             return True
         
         self.console.print(f"\n[yellow]⚠️ {i18n.get('common.confirm_delete')}[/yellow]")
+        flush_pending_input()
         return Confirm.ask(i18n.get('common.confirm_delete'))
     
     def _count_deletable(self, groups) -> int:
@@ -103,7 +106,7 @@ class CLIOperationHandler:
         except Exception as e:
             self.console.print(f"[red]{i18n.get('common.error').format(str(e))}[/red]")
         
-        input(i18n.get('common.press_any_key'))
+        pause(i18n.get('common.press_any_key'))
     
     def handle_duplicate_images(self):
         """Handle duplicate images detection and deletion."""
@@ -128,7 +131,7 @@ class CLIOperationHandler:
         except Exception as e:
             self.console.print(f"[red]{i18n.get('common.error').format(str(e))}[/red]")
         
-        input(i18n.get('common.press_any_key'))
+        pause(i18n.get('common.press_any_key'))
     
     def handle_duplicate_files(self, section_key: str, extensions=None, option_id: str = 'all'):
         """Round 9: SHA-256 duplicate flow for office / archives / other files.
@@ -146,13 +149,14 @@ class CLIOperationHandler:
         try:
             # "Other Files": the user picks the extensions at run time.
             if option_id == 'custom':
+                flush_pending_input()
                 raw = Prompt.ask(i18n.get('other_operations.enter_extensions'))
                 extensions = normalize_extensions(raw)
                 if not extensions:
                     self.console.print(
                         f"[yellow]⚠️ {i18n.get('other_operations.no_valid_extensions')}[/yellow]"
                     )
-                    input(i18n.get('common.press_any_key'))
+                    pause(i18n.get('common.press_any_key'))
                     return
                 self.console.print(
                     f"[green]{i18n.get('other_operations.accepted').format(', '.join(extensions))}[/green]"
@@ -188,7 +192,7 @@ class CLIOperationHandler:
         except Exception as e:
             self.console.print(f"[red]{i18n.get('common.error').format(str(e))}[/red]")
 
-        input(i18n.get('common.press_any_key'))
+        pause(i18n.get('common.press_any_key'))
 
     def handle_similar_images(self):
         """Handle similar images detection and deletion."""
@@ -213,7 +217,7 @@ class CLIOperationHandler:
         except Exception as e:
             self.console.print(f"[red]{i18n.get('common.error').format(str(e))}[/red]")
         
-        input(i18n.get('common.press_any_key'))
+        pause(i18n.get('common.press_any_key'))
     
     def handle_small_images(self):
         """Handle small images detection and deletion."""
@@ -238,17 +242,17 @@ class CLIOperationHandler:
         except Exception as e:
             self.console.print(f"[red]{i18n.get('common.error').format(str(e))}[/red]")
         
-        input(i18n.get('common.press_any_key'))
+        pause(i18n.get('common.press_any_key'))
     
     def handle_watermark_removal(self):
         """معالجة عملية إزالة العلامات المائية - قادم قريباً."""
         self.console.print(f"[yellow]{i18n.get('common.coming_soon')}[/yellow]")
-        input(i18n.get('common.press_any_key'))
+        pause(i18n.get('common.press_any_key'))
     
     def handle_face_detection_delete(self):
         """Handle face detection and deletion."""
         self.console.print(f"[yellow]{i18n.get('common.coming_soon')}[/yellow]")
-        input(i18n.get('common.press_any_key'))
+        pause(i18n.get('common.press_any_key'))
     
     def _get_minimum_dimensions(self) -> tuple:
         """Get minimum dimensions for small images from user."""
@@ -256,11 +260,13 @@ class CLIOperationHandler:
             self.console.print(f"\n[bold blue]📏 Set Minimum Image Dimensions[/bold blue]")
             self.console.print(f"[dim]Default: 300x300 pixels[/dim]")
             
+            flush_pending_input()
             min_width = IntPrompt.ask(
                 "📏 Minimum width (pixels)", 
                 default=300
             )
             
+            flush_pending_input()
             min_height = IntPrompt.ask(
                 "📏 Minimum height (pixels)", 
                 default=300

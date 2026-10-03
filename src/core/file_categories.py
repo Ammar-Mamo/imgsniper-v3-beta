@@ -16,6 +16,8 @@ from typing import Dict, List
 
 from ..utils.helpers.file_utils import (get_all_images, announce_scan_skips,
                                         reset_scan_skips)
+from ..utils.helpers.progress_ui import live_counter
+from .i18n.i18n import i18n
 
 # ---------------------------------------------------------------------------
 # Extension tables
@@ -242,6 +244,12 @@ def collect_files(folders: List[str], extensions, console=None) -> List[str]:
     Round 12: when `console` is given, one scan = one transparent summary of the
     files the filters skipped, so a section can never quietly look at less than
     the folder holds. The counters are reset HERE, at the start of the scan.
+
+    Round 14: the walk itself now shows a running count. Scanning a whole USB
+    hard disk used to print "Scanning folder and all subfolders" and then nothing
+    at all for minutes -- which is exactly when users start pressing keys (see
+    console_input). Which files come back is decided by get_all_images() exactly
+    as before; the counter is cosmetic and cannot influence the result.
     """
     wanted = {str(ext).lower() for ext in (extensions or []) if ext}
     if not wanted:
@@ -249,7 +257,8 @@ def collect_files(folders: List[str], extensions, console=None) -> List[str]:
 
     reset_scan_skips()
     found: List[str] = []
-    for folder in folders or []:
-        found.extend(get_all_images(folder, wanted))
+    with live_counter(console, i18n.get('common.scanning_files')) as counter:
+        for folder in folders or []:
+            found.extend(get_all_images(folder, wanted, progress_cb=counter.bump))
     announce_scan_skips(console)
     return found

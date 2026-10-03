@@ -15,7 +15,9 @@ from ..utils.helpers.file_utils import (get_all_images, move_to_recycle_bin,
                                         reset_session_folder,
                                         handle_protected_files_with_user_choice,
                                         announce_scan_skips, reset_scan_skips)
+from ..utils.helpers.progress_ui import live_counter
 from ..utils.helpers.image_codec import read_dimensions
+from ..utils.helpers.console_input import ask_line
 from ..utils.helpers.scan_modes import scan_mode_manager
 from ..utils.reports.report_generator import ReportGenerator
 
@@ -105,9 +107,14 @@ class ImageAnalyzer:
         # Round 12: same skip transparency as the other flows.
         reset_scan_skips()
         all_images = []
-        for folder in folders:
-            images = get_all_images(folder, self.supported_formats)
-            all_images.extend(images)
+        # Round 14: the directory walk now shows a running count. Walking a whole
+        # USB hard disk printed nothing for minutes before -- which is exactly
+        # when users start pressing keys. Which files are found is unchanged.
+        with live_counter(console, i18n.get('common.scanning_files')) as counter:
+            for folder in folders:
+                images = get_all_images(folder, self.supported_formats,
+                                        progress_cb=counter.bump)
+                all_images.extend(images)
         announce_scan_skips(console)
         if not all_images:
             console.print(f"[red]{i18n.get('common.no_images_found')}[/red]")
@@ -203,7 +210,10 @@ class ImageAnalyzer:
         
         # Confirm deletion
         console.print(f"\n[yellow]⚠️  {i18n.get('common.confirm_small_delete').format(len(small_images))}[/yellow]")
-        confirm = input(f"{i18n.get('common.continue_prompt')}").strip().lower()
+        # Round 14: drain keys pressed while the scan was running, so this
+        # confirmation waits for a DELIBERATE answer instead of inheriting an
+        # Enter somebody typed at a busy screen.
+        confirm = ask_line(f"{i18n.get('common.continue_prompt')}").strip().lower()
         
         if confirm not in ['y', 'yes']:
             console.print(f"[blue]{i18n.get('common.cancelled')}[/blue]")
@@ -216,7 +226,7 @@ class ImageAnalyzer:
         reset_session_folder()
         
         # التعامل مع الملفات المحمية with مستخدم اختيار
-        console.print("[yellow]🔍 Checking file permissions...[/yellow]")
+        console.print(f"[yellow]{i18n.get('common.checking_permissions')}[/yellow]")
         small_images, protected_count, force_deleted_count = handle_protected_files_with_user_choice(
             small_images, console, subfolder="small"
         )
@@ -274,7 +284,9 @@ class ImageAnalyzer:
         
         # توليد تقرير
         try:
-            report_path = self.report_generator.generate_small_images_report(deleted_files, all_files_info, min_width, min_height, moved_map)
+            # Round 14: report writing is silent and can be slow on a big run.
+            with console.status(i18n.get('common.report_writing')):
+                report_path = self.report_generator.generate_small_images_report(deleted_files, all_files_info, min_width, min_height, moved_map)
             console.print(f"[green]{i18n.get('common.report_saved').format(report_path)}[/green]")
         except Exception as report_error:
             # Round 13: never let a report failure mask the completed operation.

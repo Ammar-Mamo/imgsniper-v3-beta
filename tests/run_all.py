@@ -36,6 +36,7 @@ SUITES = [
     ('test_fixes_round11.py', 'Round 11 -- EXACT video duplicates: 8 video families, size+sample pre-filters, full SHA-256 verdict, video filename selection/report'),
     ('test_fixes_round12.py', 'Round 12 -- scan-filter transparency (skipped-file report in every section) + Settings "Recovery Mode"'),
     ('test_fixes_round13.py', 'Round 13 -- reports survive a deleted reports/ folder, never overwrite each other, and never mask a completed operation'),
+    ('test_fixes_round14.py', 'Round 14 -- every long phase shows a live counter, and a key pressed while the tool was busy can never answer a later prompt'),
 ]
 
 

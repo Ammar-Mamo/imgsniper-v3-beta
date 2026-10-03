@@ -8,6 +8,7 @@ import re
 from typing import Tuple, Optional
 from rich.console import Console
 from ...core.i18n.i18n import i18n
+from .console_input import ask_line
 
 def get_dimensions_from_user(default_width: int = 300, default_height: int = 300) -> Tuple[int, int]:
     """
@@ -34,7 +35,7 @@ def get_dimensions_from_user(default_width: int = 300, default_height: int = 300
     
     while True:
         try:
-            user_input = input(f"\n{i18n.get('dimensions.dimension_input_prompt')}").strip()
+            user_input = ask_line(f"\n{i18n.get('dimensions.dimension_input_prompt')}").strip()
             
             # Empty مدخلات - use deعيبs
             if not user_input:

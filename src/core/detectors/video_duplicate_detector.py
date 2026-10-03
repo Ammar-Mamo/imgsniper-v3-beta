@@ -49,6 +49,7 @@ from ..i18n.i18n import i18n
 from ..video_file_selector import VideoFileSelector
 from ...utils.helpers.file_utils import (handle_protected_files_with_user_choice,
                                          reset_session_folder)
+from ...utils.helpers.progress_ui import track
 from ...utils.reports.video_duplicate_report_generator import VideoDuplicateReportGenerator
 from .duplicate_detector import (DuplicateDetector, GENERIC_CHUNK_SIZE,
                                  _calculate_file_hash_worker)
@@ -314,25 +315,28 @@ class VideoDuplicateDetector(DuplicateDetector):
         reset_session_folder()
         subfolder = spec.get('recycle_subfolder', 'duplicates-video')
 
+        # Round 14: the video selector explains every decision, which means
+        # opening metadata for every candidate of every group. That used to run
+        # with no output at all; the choice itself is unchanged, only counted.
         files_to_delete: List[str] = []
         selections: Dict[Any, Dict[str, Any]] = {}
-        for key, files in duplicates.items():
-            if len(files) < 2:
-                continue
-            kept, decisions = self.video_selector.select_best_file(files)
-            if not kept:
-                continue
-            selections[key] = {'kept': kept, 'decisions': decisions}
-            files_to_delete.extend(path for path in files if path != kept)
+        with track(console, i18n.get('common.selecting_best'),
+                   len(duplicates)) as (select_progress, select_task):
+            for key, files in duplicates.items():
+                if len(files) >= 2:
+                    kept, decisions = self.video_selector.select_best_file(files)
+                    if kept:
+                        selections[key] = {'kept': kept, 'decisions': decisions}
+                        files_to_delete.extend(path for path in files if path != kept)
+                select_progress.advance(select_task)
 
-        console.print("[yellow]🔍 Checking file permissions...[/yellow]")
+        console.print(f"[yellow]{i18n.get('common.checking_permissions')}[/yellow]")
         files_to_delete, protected_count, force_deleted_count = \
             handle_protected_files_with_user_choice(files_to_delete, console,
                                                     subfolder=subfolder)
 
-        console.print("[yellow]📊 Collecting file information...[/yellow]")
         all_files_info = self._collect_group_info(
-            duplicates, self.report_generator.get_detailed_file_info)
+            duplicates, self.report_generator.get_detailed_file_info, console)
 
         deleted_files, moved_map = self._move_files_to_bin(files_to_delete, console,
                                                            subfolder)
@@ -341,9 +345,11 @@ class VideoDuplicateDetector(DuplicateDetector):
                                     force_deleted_count, subfolder)
 
         try:
-            report_path = self.video_report_generator.generate_video_duplicates_report(
-                duplicates, deleted_files, all_files_info, moved_map, spec,
-                option_id, selections)
+            # Round 14: report writing is the second silent window of a big run.
+            with console.status(i18n.get('common.report_writing')):
+                report_path = self.video_report_generator.generate_video_duplicates_report(
+                    duplicates, deleted_files, all_files_info, moved_map, spec,
+                    option_id, selections)
             console.print(f"[green]{i18n.get('common.report_saved').format(report_path)}[/green]")
         except Exception as report_error:
             # Round 13: never let a report failure mask the completed operation.

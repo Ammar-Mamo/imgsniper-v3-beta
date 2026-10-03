@@ -28,7 +28,9 @@ from ...utils.helpers.file_utils import (get_all_images, move_to_recycle_bin,
                                          reset_session_folder,
                                          handle_protected_files_with_user_choice,
                                          announce_scan_skips, reset_scan_skips)
+from ...utils.helpers.progress_ui import live_counter
 from ...utils.helpers.scan_modes import scan_mode_manager
+from ...utils.helpers.progress_ui import track
 from ...utils.reports.report_generator import ReportGenerator
 from ..file_categories import collect_files
 
@@ -82,9 +84,14 @@ class DuplicateDetector:
         # image flow reports the same transparency as every other section.
         reset_scan_skips()
         all_images = []
-        for folder in folders:
-            images = get_all_images(folder, self.supported_formats)
-            all_images.extend(images)
+        # Round 14: the directory walk now shows a running count. Walking a whole
+        # USB hard disk printed nothing for minutes before -- which is exactly
+        # when users start pressing keys. Which files are found is unchanged.
+        with live_counter(console, i18n.get('common.scanning_files')) as counter:
+            for folder in folders:
+                images = get_all_images(folder, self.supported_formats,
+                                        progress_cb=counter.bump)
+                all_images.extend(images)
         announce_scan_skips(console)
         
         console.print(f"[green]{i18n.get('common.found_images').format(len(all_images))}[/green]")
@@ -169,20 +176,30 @@ class DuplicateDetector:
     # ---------------------------------------------------------------------
     # Round 9: shared deletion plumbing (image + non-image flows)
     # ---------------------------------------------------------------------
-    def _collect_group_info(self, duplicates: Dict[Any, List[str]], info_getter) -> Dict[str, Dict[str, Any]]:
+    def _collect_group_info(self, duplicates: Dict[Any, List[str]], info_getter,
+                            console: Console = None) -> Dict[str, Dict[str, Any]]:
         """Collect report info for EVERY file of every group BEFORE deletion.
 
         `info_getter` is the matching extractor: get_detailed_image_info for
         images, get_detailed_file_info for office/archive/other files. Doing
         this before the moves means a report can still describe a file that no
         longer sits at its original path.
+
+        Round 14: `console` is optional and only drives a progress bar. This is
+        a full extra pass over every file of every group (a header probe plus a
+        date read each) and it used to print nothing at all, so a large run sat
+        at 0% CPU with a dead-looking console. Values and order are unchanged.
         """
         all_files_info = {}
 
         # جلب info for جميع ملفات in نسخة مكررة groups
-        for _group, files in duplicates.items():
-            for file_path in files:
-                all_files_info[file_path] = info_getter(file_path)
+        total = sum(len(files) for files in duplicates.values())
+        with track(console, i18n.get('common.collecting_info'),
+                   total) as (info_progress, info_task):
+            for _group, files in duplicates.items():
+                for file_path in files:
+                    all_files_info[file_path] = info_getter(file_path)
+                    info_progress.advance(info_task)
         return all_files_info
 
     def _move_files_to_bin(self, files_to_delete: List[str], console: Console,
@@ -404,22 +421,28 @@ class DuplicateDetector:
         reset_session_folder()
         subfolder = spec.get('recycle_subfolder', 'duplicates-other')
 
+        # Round 14: choosing the keeper opens every member of every group
+        # several times (dimensions, resolution boost, date). On a slow disk
+        # that is minutes of work that used to print nothing. The choice itself
+        # is untouched -- only its progress is visible now.
         files_to_delete = []
-        for _group, files in duplicates.items():
-            if len(files) > 1:
-                best_file = file_selector.select_best_file(files, fallback_mtime=True)
-                for file_path in files:
-                    if file_path != best_file:
-                        files_to_delete.append(file_path)
+        with track(console, i18n.get('common.selecting_best'),
+                   len(duplicates)) as (select_progress, select_task):
+            for _group, files in duplicates.items():
+                if len(files) > 1:
+                    best_file = file_selector.select_best_file(files, fallback_mtime=True)
+                    for file_path in files:
+                        if file_path != best_file:
+                            files_to_delete.append(file_path)
+                select_progress.advance(select_task)
 
-        console.print("[yellow]🔍 Checking file permissions...[/yellow]")
+        console.print(f"[yellow]{i18n.get('common.checking_permissions')}[/yellow]")
         files_to_delete, protected_count, force_deleted_count = handle_protected_files_with_user_choice(
             files_to_delete, console, subfolder=subfolder
         )
 
-        console.print("[yellow]📊 Collecting file information...[/yellow]")
         all_files_info = self._collect_group_info(
-            duplicates, self.report_generator.get_detailed_file_info)
+            duplicates, self.report_generator.get_detailed_file_info, console)
 
         deleted_files, moved_map = self._move_files_to_bin(files_to_delete, console, subfolder)
 
@@ -427,8 +450,10 @@ class DuplicateDetector:
                                     force_deleted_count, subfolder)
 
         try:
-            report_path = self.report_generator.generate_file_duplicates_report_with_info(
-                duplicates, deleted_files, all_files_info, moved_map, spec)
+            # Round 14: report writing is the second silent window of a big run.
+            with console.status(i18n.get('common.report_writing')):
+                report_path = self.report_generator.generate_file_duplicates_report_with_info(
+                    duplicates, deleted_files, all_files_info, moved_map, spec)
             console.print(f"[green]{i18n.get('common.report_saved').format(report_path)}[/green]")
         except Exception as report_error:
             # Round 13: never let a report failure mask the completed operation.
@@ -454,25 +479,29 @@ class DuplicateDetector:
         # إعادة تعيين جلسة مجلد for جديد تشغيل
         reset_session_folder()
 
+        # Round 14: the keeper choice is the long silent phase -- every member
+        # of every group is opened several times. Same decision, now counted.
         files_to_delete = []
-        for file_hash, files in duplicates.items():
-            if len(files) > 1:
-                # Keep the أفضل ملف and mark others for deletion
-                best_file = file_selector.select_best_file(files)
-                for file_path in files:
-                    if file_path != best_file:
-                        files_to_delete.append(file_path)
+        with track(console, i18n.get('common.selecting_best'),
+                   len(duplicates)) as (select_progress, select_task):
+            for file_hash, files in duplicates.items():
+                if len(files) > 1:
+                    # Keep the أفضل ملف and mark others for deletion
+                    best_file = file_selector.select_best_file(files)
+                    for file_path in files:
+                        if file_path != best_file:
+                            files_to_delete.append(file_path)
+                select_progress.advance(select_task)
 
         # التعامل مع الملفات المحمية with مستخدم اختيار
-        console.print("[yellow]🔍 Checking file permissions...[/yellow]")
+        console.print(f"[yellow]{i18n.get('common.checking_permissions')}[/yellow]")
         files_to_delete, protected_count, force_deleted_count = handle_protected_files_with_user_choice(
             files_to_delete, console, subfolder="duplicates"
         )
 
         # Collect تفصيلed inتنسيقion for جميع ملفات BEFORE deletion
-        console.print("[yellow]📊 Collecting file information...[/yellow]")
         all_files_info = self._collect_group_info(
-            duplicates, self.report_generator.get_detailed_image_info)
+            duplicates, self.report_generator.get_detailed_image_info, console)
 
         deleted_files, moved_map = self._move_files_to_bin(files_to_delete, console, "duplicates")
 
@@ -481,7 +510,9 @@ class DuplicateDetector:
 
         # توليد تقرير with pre-collected inتنسيقion
         try:
-            report_path = self.report_generator.generate_duplicates_report_with_info(duplicates, deleted_files, all_files_info, moved_map)
+            # Round 14: report writing is the second silent window of a big run.
+            with console.status(i18n.get('common.report_writing')):
+                report_path = self.report_generator.generate_duplicates_report_with_info(duplicates, deleted_files, all_files_info, moved_map)
             console.print(f"[green]{i18n.get('common.report_saved').format(report_path)}[/green]")
         except Exception as report_error:
             # Round 13: never let a report failure mask the completed operation.

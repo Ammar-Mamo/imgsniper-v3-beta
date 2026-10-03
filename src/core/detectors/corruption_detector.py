@@ -18,6 +18,7 @@ from ...utils.helpers.file_utils import (get_all_images, move_to_recycle_bin,
                                          reset_session_folder,
                                          handle_protected_files_with_user_choice,
                                          announce_scan_skips, reset_scan_skips)
+from ...utils.helpers.progress_ui import live_counter
 from ...utils.helpers.image_codec import open_image_with_reason
 from ...utils.helpers.scan_modes import scan_mode_manager
 from ...utils.reports.report_generator import ReportGenerator
@@ -124,9 +125,14 @@ class CorruptionDetector:
         # Round 12: same skip transparency as the duplicate/video flows.
         reset_scan_skips()
         all_images = []
-        for folder in folders:
-            images = get_all_images(folder, self.supported_formats)
-            all_images.extend(images)
+        # Round 14: the directory walk now shows a running count. Walking a whole
+        # USB hard disk printed nothing for minutes before -- which is exactly
+        # when users start pressing keys. Which files are found is unchanged.
+        with live_counter(console, i18n.get('common.scanning_files')) as counter:
+            for folder in folders:
+                images = get_all_images(folder, self.supported_formats,
+                                        progress_cb=counter.bump)
+                all_images.extend(images)
         announce_scan_skips(console)
         
         console.print(f"[green]{i18n.get('common.found_images').format(len(all_images))}[/green]")
@@ -211,7 +217,7 @@ class CorruptionDetector:
         reset_session_folder()
         
         # التعامل مع الملفات المحمية with مستخدم اختيار
-        console.print("[yellow]🔍 Checking file permissions...[/yellow]")
+        console.print(f"[yellow]{i18n.get('common.checking_permissions')}[/yellow]")
         corrupted_files, protected_count, force_deleted_count = handle_protected_files_with_user_choice(
             corrupted_files, console, subfolder="corrupted"
         )
@@ -264,7 +270,9 @@ class CorruptionDetector:
         
         # توليد تقرير
         try:
-            report_path = self.report_generator.generate_corrupted_report(deleted_files, moved_map)
+            # Round 14: report writing is silent and can be slow on a big run.
+            with console.status(i18n.get('common.report_writing')):
+                report_path = self.report_generator.generate_corrupted_report(deleted_files, moved_map)
             console.print(f"[green]{i18n.get('common.report_saved').format(report_path)}[/green]")
         except Exception as report_error:
             # Round 13: the cleanup above already FINISHED. A report failure must
