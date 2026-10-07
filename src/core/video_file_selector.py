@@ -104,7 +104,10 @@ ORIGINAL_MARKERS = ('original', 'orig', 'camera', 'video', 'vid', 'img',
 
 # "file (1).mp4" / "file (15).mp4": a parenthesised number at the END of the
 # stem is a copy counter -- any number of digits, not just 1-9.
-COPY_SUFFIX_RE = re.compile(r'\(\s*(\d{1,4})\s*\)\s*$')
+# Any number of digits, not only 1-4: "copy (99999999)" and "(221973601)" are
+# de-duplication counters exactly like "(2)". A parenthesised YEAR stays exempt
+# because YEAR_SUFFIX_RE below is tested FIRST (see analyze_video_filename).
+COPY_SUFFIX_RE = re.compile(r'\(\s*(\d+)\s*\)\s*$')
 # "Movie (2018).mp4" is a YEAR, not a copy counter, and must not be penalised.
 YEAR_SUFFIX_RE = re.compile(r'\(\s*(?:19|20)\d{2}\s*\)\s*$')
 
