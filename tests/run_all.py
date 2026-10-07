@@ -37,6 +37,8 @@ SUITES = [
     ('test_fixes_round12.py', 'Round 12 -- scan-filter transparency (skipped-file report in every section) + Settings "Recovery Mode"'),
     ('test_fixes_round13.py', 'Round 13 -- reports survive a deleted reports/ folder, never overwrite each other, and never mask a completed operation'),
     ('test_fixes_round14.py', 'Round 14 -- every long phase shows a live counter, and a key pressed while the tool was busy can never answer a later prompt'),
+    ('test_fixes_round15.py', 'Round 15 -- filename-importance INPUT fixes: a parenthesised word is not a numbered copy, and a recovery tool\'s carved name earns no keyword reward'),
+    ('test_fixes_round16.py', 'Round 16 -- numbered-copy detection covers ANY number in parentheses, and Arabic copy wording (نسخة / Arabic-Indic digits / bidi marks) is detected at all'),
 ]
 
 

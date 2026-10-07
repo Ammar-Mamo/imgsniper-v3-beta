@@ -13,6 +13,211 @@ significant defect, `P3` = hygiene.
 
 ---
 
+## Round 16
+
+### Fix — numbered-copy detection stopped at 9, and Arabic copy wording was invisible
+
+The user reported two gaps in the round-15 implementation.
+
+**1. `numbered = [' (' + str(i) + ')' for i in range(1, 10)]` stopped at 9.**
+So `' (10)'` and above escaped the copy penalty **entirely** and scored as a
+*clean* name. The result was exactly backwards:
+
+| filename | before | after |
+|---|---|---|
+| `photo (9).jpg` | 3 | **3** |
+| `photo (10).jpg` | **8** | **3** |
+| `copy (99999999).jpg` | **6** | **2** |
+| `copy (165982).jpg` | **6** | **2** |
+| `copy (10215618).jpg` | **6** | **2** |
+
+A tenth copy outranked a ninth one, and a copy numbered in the millions scored
+like an ordinary clean file. Windows, browsers and recovery tools all append
+`' (N)'`, and on a large recovery the counter grows far past 9 — the user's own
+corpus contains names like `copy (99999999)`. The list is replaced by a compiled
+`\(\s*\d+\s*\)`, so **any** digit run inside parentheses counts.
+
+Only *pure* digits match, so real qualifiers are still left alone:
+`(Final)`, `(USA)`, `(Final v2)`, `(2024-01-01)` and `(12x16)` all keep their
+weight.
+
+**2. Arabic copy wording was invisible to the scorer.** Windows' Arabic locale
+names a duplicate `نسخة` / `نسخة (٢) من ...` / `ملف - نسخة`, so an Arabic-locale
+library kept every one of its copies. The cause was technical and worth
+recording: `_pattern_matches` treats an alphabetic pattern as a whole **token**
+and tokenises with `re.split(r'[^a-z]+', ...)`. `str.isalpha()` is `True` for
+Arabic letters, so an Arabic pattern took that branch — and the split deletes
+every Arabic character, leaving `['']` and making the pattern **impossible to
+ever match**. Non-ASCII alphabetic patterns are now matched as substrings;
+Latin tokenisation is byte-for-byte unchanged (`pic` still does not match `epic`).
+
+Three invisible obstacles had to be handled for this to actually work:
+
+| obstacle | example | handling |
+|---|---|---|
+| Arabic-Indic digits | `نسخة (٢)` — `\d` does not match `٢` | `normalize_arabic_numbers()` before matching |
+| bidi marks | `‏نسخة (٢) من file.txt` carries U+200F | `_BIDI_MARKS_RE` strips them |
+| spelling variant | `نسخه` (ه instead of ة) is very common | both spellings are in the table |
+
+`نسخة` / `نسخه` join the shared pattern table at weight **2 — exactly the weight
+of `copy`**, because that is literally what they mean. All of these now score
+≤ 3, and a real file beats its own copy in every form:
+
+```
+photo.jpg (8) beats photo (99999999).jpg (3)
+photo.jpg (8) beats نسخة 10512267.jpg   (2)
+photo.jpg (8) beats نسخة (221973601).jpg (2)
+```
+
+**One trade-off, stated openly rather than hidden.** Because the rule is now
+"pure digits inside parentheses", a bare **year** reads as a copy number too:
+`report (2026).docx` scores 3, where round 15 gave it 6. The user asked for
+every parenthesised number to count, and on a recovery corpus `' (N)'` really is
+a dedup marker, so this is deliberate. It is asserted as a `TRADE-OFF` case in
+`tests/test_fixes_round16.py` so it can never change silently in *either*
+direction — if a future round adds a year exception, that assertion is the place
+that must be edited on purpose.
+
+**Deliberately NOT changed:** the priority order (`[2, 3, 1, 4]`), the criterion
+weights (`date=4, resolution=3, size=2, filename=1`), the date gates, the
+selection engine, thresholds, dry-run behaviour, deletion behaviour and report
+content. Both round-15 fixes still hold, and a frozen table of 48 filenames
+scores identically.
+
+Round 11's guard (`filename_importance gained no video-only marker`) was updated
+at the same time: `نسخة` was listed there, but it is **not** a video-only marker
+— it is the Arabic equivalent of `copy`, which has been in the same shared map at
+the same weight since round 1, and the user asked for copy detection across
+*every* extension. It was removed from the guard list and asserted positively
+instead, so the guard still catches a genuine video-only leak.
+
+Pinned by `tests/test_fixes_round16.py` (61 assertions).
+
+---
+
+
+## Round 15
+
+### Fix — the filename criterion's INPUT was wrong, so a recovery tool's placeholder name beat a real one
+
+A forensic read of the user's own reports (a 34 MB `similar_*.txt` and a 26 MB
+`duplicates_*.txt`; 23666 + 24517 groups) found one decision shape repeated
+**12645 times**:
+
+```
+KEPT  img_1080x2340x24_020414.jpg                  1080x2340   importance 8/9
+DEL   Screenshot_<date>_Gallery.jpg                1080x2340   importance 7/9
+      reason: filename importance (kept: 8/9 — this file: 7/9)
+```
+
+The kept file is R-Studio's **raw-carved placeholder** — machine generated,
+carrying no information whatsoever. The deleted file was a real user name whose
+Arabic-Indic digits encode the true capture date, and the tool had extracted that
+date correctly (`2025-06-26`). The tool kept the nameless carve and deleted the
+real, dated file.
+
+**The priority order was never at fault.** The user's order is
+`date > resolution > size > filename` (weights 4/3/2/1) and it was honoured
+exactly. Filename decided only because everything above it was silent:
+
+| criterion | why it could not decide |
+|---|---|
+| date | neutralised by the round-7 gate — a filename-precision date (midnight) against an EXIF time 14 h apart, span < 1 day → 5.0 for everyone |
+| resolution | identical, both 1080x2340 → 5.0 |
+| size | inside the no-decision threshold → 5.0 |
+| filename | **the only criterion still able to speak** |
+
+So the defect was the *input values*, not the mechanism. There were two.
+
+**1. `' ('` punished any parenthesised word as a numbered copy.** `copy_markers`
+began with the bare substring `' ('`, while the clean-name bonus was exempted
+only for `' (1)'..' (9)'`. The penalty was broad and the exemption narrow, so a
+parenthesised word was capped as a copy yet still rewarded as clean:
+
+| filename | before | after | why |
+|---|---|---|---|
+| `dsc (Final).jpg` | 4 | **9** | `dsc` weighs 8 — it lost five points to a word in brackets |
+| `photo (USA).jpg` | 4 | **8** | |
+| `2605202413312833 (USA).pdf` | 4 | **6** | the group the office report showed as "kept 6/9 — this file 4/9" |
+| `photo (1).jpg` | 3 | **3** | a genuine numbered copy stays penalised |
+
+Numbered copies were already covered twice — by the `' (1)'..' (9)'` entries in
+the pattern table and by the `numbered` list — so the broad substring was both
+redundant and wrong. It is gone, and `numbered` / `is_numbered_copy` are now
+computed once, beside the penalty, so the two can never drift apart again.
+
+---
+
+
+**2. A carved machine name earned the photo keyword reward.** R-Studio writes
+raw-carved files as `<word>_<W>x<H>x<bitdepth>_<index>`. The literal `img` token
+matched the photo keyword (7) and took the clean-name bonus = 8, outranking a
+genuine `Screenshot_<date>_<app>.jpg` (6+1 = 7). The guard matches the **shape**,
+not the prefix — no human names a file that way — and the result is **neutral,
+not punitive**: the name falls back to the ordinary default (5) plus the clean
+bonus = 6, so an empty name simply stops beating a real one.
+
+| filename | before | after |
+|---|---|---|
+| `img_1080x2340x24_020414.jpg` | 8 | **6** |
+| `vid_1920x1080x24_000123.mp4` | 9 | **6** (`vid` weighs 8, so it was 8+1) |
+| `IMG_1234_WA0001.jpg` | 8 | **8** — a real camera name, untouched |
+| `IMG_0001.jpg` | 8 | **8** — untouched |
+
+**Net effect:** those 12645 inverted decisions flip. The real dated user file now
+wins its group, while two machine names tie at 6 — which is correct, because
+neither carries information and nothing about the name should decide between them.
+
+**Deliberately NOT changed:** the priority order, the criterion weights, the date
+gates, the `filename_importance` pattern table, the selection engine, thresholds,
+dry-run behaviour, deletion behaviour and report content. Verified by loading the
+pre-round-15 file from `git HEAD` and diffing every score against it: **58 other
+filenames score identically**, and only the 9 intended ones move.
+
+Pinned by `tests/test_fixes_round15.py` (44 assertions), including a frozen
+reference table of 45 scores, an end-to-end reproduction of the flipped decision
+through `build_group_scoretable`, and explicit assertions that the weights are
+still `date=4, resolution=3, size=2, filename=1`.
+
+### Fix — round 13's leftover assertion could never pass once the user had real reports
+
+```python
+not any(p.name.startswith(('corrupted_2', 'duplicates_2', 'similar_2',
+                           'small_images_2', 'never_used_name'))
+        for p in _REAL_REPORTS.glob('*.txt'))
+```
+
+Those are exactly the prefixes of the user's **own** reports
+(`duplicates_2026-10-03_23-23-49.txt`, `similar_2026-10-04_00-55-58.txt`, …),
+because a real report is named `<section>_<YYYY>-<MM>-<DD>_<h-m-s>.txt`. The suite
+therefore failed on every machine that had ever produced a report. Permanently red
+is worse than no assertion at all: a genuine leak would have been
+indistinguishable from the standing failure. "Left behind" now means a file that
+**appeared** while the suite ran, compared against the snapshot taken at import
+time, so the check can genuinely fail and genuinely pass.
+
+Confirmed pre-existing rather than introduced here: the suite failed identically
+on the unmodified code (`git stash` → same single failure).
+
+### Fix — the test summary double-counted failures
+
+```python
+def P(label, ok, extra=''):
+    TP += 1              # incremented on EVERY call, pass or fail
+    if ok: ...
+    else: TF += 1
+print(f'  Total: {TP + TF}  PASS: {TP}  FAIL: {TF}')
+```
+
+`TP` counted assertions rather than passes, and `Total` added the failures a
+second time. A suite with 80 assertions and 1 failure reported
+`Total: 81  PASS: 80  FAIL: 1` — claiming 80 passes when only 79 had passed, and
+inflating the total. Each counter now owns exactly one outcome. Fixed in rounds 13
+and 14, the only two suites carrying this pattern.
+
+---
+
+
 ## Round 14
 
 ### Fix — the tool looked dead for minutes, and the user's own keystrokes then closed it

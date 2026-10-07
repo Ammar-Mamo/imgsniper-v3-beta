@@ -78,8 +78,7 @@ For each group of similar images, four criteria are scored and combined. The
    precision) — counts as a tie, not a decision.
 2. **Resolution** — higher pixel count wins.
 3. **File size** — larger file wins (more detail, less compression).
-4. **Filename** — names like `copy`, `(1)` or `Recovered_*` are penalised;
-   clean camera names score higher.
+4. **Filename** — genuine copy wording (`copy`, `_copy`, `- copy`, `duplicate`, and the Arabic `نسخة` / `نسخه`) and numbered copies are penalised; clean camera names score higher. A numbered copy means **any** number in parentheses — `(2)`, `(10)`, `(99999999)` — with Arabic-Indic digits (`نسخة (٢)`) and Windows' invisible bidi marks normalised first; a parenthesised *word* (`(Final)`, `(USA)`) or a qualified number (`(2024-01-01)`) is left alone. A recovery tool's carved placeholder (`img_1080x2340x24_020414.jpg`) scores **neutral**, not high — it carries no information, so it must not beat a real name, but it is not punished either.
 
 **Round 7 — comparable scales.** Each criterion is normalised *within the
 group* onto one comparable 0–10 scale (log-ratio for resolution/size,
@@ -121,6 +120,26 @@ real photo":
   date or filename alone.
 - **Resolution-sacrifice warning** — if the kept image has *fewer* pixels than
   another image in the group, the report says so explicitly.
+
+**Round 15 — the filename criterion's *input*, not the mechanism.** A forensic
+read of a real 68 MB report set (23666 + 24517 groups) found one decision shape
+repeated **12645 times**: a recovery tool's carved placeholder
+`img_1080x2340x24_020414.jpg` (importance 8/9) was kept while a real, dated
+`Screenshot_<date>_<app>.jpg` (7/9) was deleted. The priority order was honoured
+exactly — filename decided only because date had been neutralised by the gate
+above, resolution was identical and size was inside the no-decision threshold,
+leaving filename as the only criterion still able to speak. Two *input* defects
+were fixed:
+
+- the copy penalty no longer treats **any** parenthesised word as a numbered copy
+  (`dsc (Final).jpg` was scoring 4 instead of 9; genuine `(1)`…`(9)` still are);
+- a carved machine name no longer earns the photo keyword reward — it is now
+  **neutral** at 6, so it cannot beat a real name, but it is not punished either.
+
+Nothing about *how* the tool decides changed. Verified by diffing every score
+against the pre-round-15 code: 58 other filenames score identically, only the 9
+intended ones move, and the weights are still date=4, resolution=3, size=2,
+filename=1. Pinned by `tests/test_fixes_round15.py`.
 
 ### The two-stage duplicate scan
 

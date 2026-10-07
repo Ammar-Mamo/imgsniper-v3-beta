@@ -86,8 +86,15 @@ def SEP(title):
 
 def P(label, ok, extra=''):
     global TP, TF
-    TP += 1
+    # Round 15: TP used to increment on EVERY call, so it counted assertions
+    # rather than passes, while TF counted failures on top of it. The summary
+    # then printed `Total: TP + TF` (failures double-counted) and `PASS: TP`
+    # (which silently included the failing ones): a suite with 80 assertions
+    # and 1 failure reported "Total: 81  PASS: 80  FAIL: 1", claiming 80 passes
+    # when only 79 had actually passed. Each counter now owns exactly one
+    # outcome, so Total = TP + TF is the true assertion count and PASS is real.
     if ok:
+        TP += 1
         print(f'  [PASS] {label}')
     else:
         TF += 1

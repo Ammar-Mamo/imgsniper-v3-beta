@@ -77,8 +77,15 @@ def SEP(title):
 
 def P(label, ok, extra=''):
     global TP, TF
-    TP += 1
+    # Round 15: TP used to increment on EVERY call, so it counted assertions
+    # rather than passes, while TF counted failures on top of it. The summary
+    # then printed `Total: TP + TF` (failures double-counted) and `PASS: TP`
+    # (which silently included the failing ones): a suite with 80 assertions
+    # and 1 failure reported "Total: 81  PASS: 80  FAIL: 1", claiming 80 passes
+    # when only 79 had actually passed. Each counter now owns exactly one
+    # outcome, so Total = TP + TF is the true assertion count and PASS is real.
     if ok:
+        TP += 1
         print(f'  [PASS] {label}')
     else:
         TF += 1
@@ -395,11 +402,25 @@ P('the REAL reports/ folder was never touched by this suite',
 
 _restore_cfg()
 P('settings.json is byte-identical again', _CFG_FILE.read_bytes() == _CFG_BYTES)
+# Round 15: this assertion used to flag ANY file whose name started with
+# 'corrupted_2' / 'duplicates_2' / 'similar_2' / 'small_images_2', on the
+# theory that such a name could only be a report this suite had leaked into
+# the user's real folder. But those are precisely the prefixes of the user's
+# OWN reports ('duplicates_2026-10-03_23-23-49.txt', 'similar_2026-10-04_...'
+# and so on -- real reports are named <section>_<YYYY>-<MM>-<DD>_<h-m-s>.txt),
+# so once a single real report existed the assertion could never pass again.
+# The suite stayed permanently red, which is worse than no assertion at all:
+# a genuine leak would have been indistinguishable from the standing failure.
+#
+# "Left behind" means a file that APPEARED while this suite ran, so compare
+# against the snapshot taken at import time rather than guessing from a name
+# prefix. That also keeps the check honest in both directions -- it can now
+# actually FAIL when something new is written, and actually PASS when the
+# user simply has their own reports.
+_left_behind = (sorted(set(_real_now or []) - set(_REAL_REPORTS_BEFORE or []))
+                if _REAL_REPORTS.exists() else [])
 P('no test report was left behind in the real reports/ folder',
-  not any(p.name.startswith(('corrupted_2', 'duplicates_2', 'similar_2',
-                             'small_images_2', 'never_used_name'))
-          for p in _REAL_REPORTS.glob('*.txt'))
-  if _REAL_REPORTS.exists() else True)
+  not _left_behind, _left_behind)
 
 print('')
 print('=' * 70)

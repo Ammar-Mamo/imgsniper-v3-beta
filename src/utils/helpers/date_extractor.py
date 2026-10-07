@@ -13,6 +13,31 @@ from typing import Optional, List, Tuple
 from PIL import Image
 from PIL.ExifTags import TAGS
 
+# ---------------------------------------------------------------------------
+# Round 16: numbered-copy detection, compiled once at import time.
+#
+# ' (N)' for ANY N. Windows, browsers and recovery tools all append ' (N)' when
+# they save another copy of a file, and on a large recovery N grows far past 9
+# -- the user's own corpus contains names such as 'copy (99999999)'. The old
+# list stopped at ' (9)', so ' (10)' and above escaped the penalty ENTIRELY and
+# scored as a clean name: 'photo (10).jpg' was worth 8 while 'photo (9).jpg'
+# was worth 3. Only PURE digits inside the parentheses match, so a real
+# qualifier such as '(2024-01-01)' or '(12x16)' is still left alone.
+_NUMBERED_COPY_RE = re.compile(r'\(\s*\d+\s*\)')
+
+# Arabic 'نسخة <digits>' -- and the very common 'نسخه' spelling variant (ه
+# instead of ة). The PARENTHESISED Arabic form 'نسخة (٢٢١٩٧٣٦٠١)' needs no
+# pattern of its own: it is caught by _NUMBERED_COPY_RE as soon as the
+# Arabic-Indic digits are normalised to ASCII.
+_ARABIC_NUMBERED_COPY_RE = re.compile(r'نسخ[هة]\s*\d+')
+
+# Invisible bidirectional marks that Windows embeds in Arabic filenames, e.g.
+# '‏نسخة (٢) من file.txt' carries a RIGHT-TO-LEFT MARK (U+200F). Neither a
+# digit regex nor an Arabic substring can match through them, so they are
+# stripped for MATCHING ONLY -- the score itself is never rewritten.
+_BIDI_MARKS_RE = re.compile('[\u200e\u200f\u202a-\u202e\u2066-\u2069]')
+
+
 class DateExtractor:
     """Advanced date extraction from filenames and EXIF data."""
     
@@ -54,6 +79,16 @@ class DateExtractor:
             'recovered': 1,  # Lowest importance
             'copy': 2,
             'duplicate': 2,
+            # Round 16: Arabic copy wording. Windows' Arabic locale names a
+            # duplicate 'نسخة' / 'نسخة (٢) من ...' / 'ملف - نسخة', and none of
+            # it was detected before, so an Arabic-locale library kept its
+            # copies. Weighted exactly like 'copy'. Both spellings are listed
+            # because 'نسخه' (ه instead of ة) is extremely common in real
+            # filenames. These are matched as SUBSTRINGS, not tokens -- see
+            # _pattern_matches, whose token split is [^a-z]+ and would
+            # otherwise destroy every Arabic character and never match.
+            'نسخة': 2,
+            'نسخه': 2,
             'backup': 3,
             'temp': 3,
             'tmp': 3,
@@ -224,13 +259,26 @@ class DateExtractor:
         """
         filename_lower = filename.lower()
 
+        # Round 16: a normalised form used for MATCHING ONLY.
+        #
+        # Two things stop a copy marker from being recognised in an
+        # Arabic-locale filename, and both are invisible:
+        #   * Arabic-Indic digits -- Windows writes 'نسخة (٢)', and \d does not
+        #     match '٢';
+        #   * bidirectional marks -- Windows embeds an RTL MARK (U+200F) in
+        #     Arabic names, so even the Arabic substring fails to match.
+        # Both are normalised away here. The score returned is still computed
+        # from the patterns themselves; nothing about the filename is rewritten.
+        match_form = _BIDI_MARKS_RE.sub(
+            '', self.normalize_arabic_numbers(filename_lower))
+
         # Default score for an ordinary filename
         max_score = 5
 
         # Collect matching patterns using word-boundary-aware matching
         found_patterns = []
         for pattern, score in self.filename_importance.items():
-            if self._pattern_matches(filename_lower, pattern):
+            if self._pattern_matches(match_form, pattern):
                 found_patterns.append((pattern, score))
 
         # If patterns matched, the most specific one wins (longest pattern)
@@ -238,9 +286,61 @@ class DateExtractor:
             found_patterns.sort(key=lambda x: len(x[0]), reverse=True)
             max_score = found_patterns[0][1]
 
+        # Round 15: a recovery tool's CARVED-FILE name is a machine-generated
+        # placeholder, not a user name, so it must not earn a keyword reward.
+        #
+        # R-Studio writes raw-carved images as
+        #     img_<width>x<height>x<bitdepth>_<index>.<ext>
+        # Its literal 'img' token matched the photo keyword (7) and then took
+        # the clean-name bonus (+1) = 8, which OUTSCORED a genuine, dated user
+        # file such as 'Screenshot_<date>_<app>.jpg' (6+1 = 7). On a recovery
+        # corpus that inverted 12,645 decisions: the nameless carve was kept
+        # and the real, dated file was deleted.
+        #
+        # The guard matches the SHAPE, not the prefix -- '<word>_<digits>x
+        # <digits>x<digits>_<digits>' is unmistakably a carving tool's output
+        # and no human names a file that way. Real camera names are untouched:
+        # IMG_1234_WA0001.jpg and IMG_0001.jpg do not match this shape.
+        #
+        # The result is NEUTRAL, not punitive: the name falls back to the
+        # ordinary-filename default (5) plus the clean bonus = 6. An empty name
+        # neither earns nor loses -- it simply stops beating a real one.
+        stem_lower = (match_form.rsplit('.', 1)[0]
+                      if '.' in match_form else match_form)
+        if re.fullmatch(r'[a-z]+_\d+x\d+x\d+_\d+', stem_lower):
+            found_patterns = []
+            max_score = 5
+
         # Penalty for obvious copies/duplicates — cap the score at 3
-        copy_markers = [' (', '_copy', '- copy', 'duplicate']
-        if any(self._pattern_matches(filename_lower, m) for m in copy_markers):
+        #
+        # Round 15: the first marker used to be the bare ' (' substring, which
+        # matched ANY parenthesised qualifier -- not just numbered copies.
+        # 'dsc (Final).jpg' was therefore capped from 8 down to 3 and then
+        # bonus'd back to 4, five points below its own weight, and '(USA).pdf'
+        # lost to an empty numeric name. The asymmetry was the real defect: the
+        # PENALTY was broad (' (' matches every parenthesis) while the bonus
+        # EXEMPTION below was narrow (' (1)'..' (9)' only), so a parenthesised
+        # word was punished as a copy yet still rewarded as clean.
+        #
+        # Numbered copies are already covered twice over -- by the explicit
+        # ' (1)'..' (9)' entries in the pattern table and by the `numbered`
+        # list -- so the broad substring was both redundant and wrong. Only
+        # genuine copy wording and genuine numbered copies are penalised now.
+        #
+        # Round 16: the numbered test now covers ANY number, not just 1-9.
+        # The old list stopped at ' (9)', so ' (10)' and above escaped the
+        # penalty ENTIRELY and scored as a clean name -- 'photo (10).jpg' was
+        # worth 8 while 'photo (9).jpg' was worth 3, which is exactly
+        # backwards. On a large recovery the counter grows far past 9, so the
+        # user's own corpus contains 'copy (99999999)'. Both regexes run on
+        # `match_form`, so Arabic-Indic digits and bidi marks are already gone:
+        # 'نسخة (٢٢١٩٧٣٦٠١)' is caught by the parenthesis regex and
+        # 'نسخة 10512267' by the Arabic one.
+        is_numbered_copy = bool(_NUMBERED_COPY_RE.search(match_form)
+                                or _ARABIC_NUMBERED_COPY_RE.search(match_form))
+        copy_markers = ['_copy', '- copy', 'duplicate', 'نسخة', 'نسخه']
+        if is_numbered_copy or any(self._pattern_matches(match_form, m)
+                                   for m in copy_markers):
             max_score = min(max_score, 3)
 
         # Small bonus (+1) for clean names: no numbered copy suffix.
@@ -259,8 +359,11 @@ class DateExtractor:
         # NOT optional: lowering the weights while keeping it would have
         # inverted the ordering, because dsc_1234.jpg would score 8+1=9
         # while original.jpg stayed pinned at 8.
-        numbered = [' (' + str(i) + ')' for i in range(1, 10)]
-        if not any(p in filename_lower for p in numbered):
+        #
+        # Round 15: `numbered` / `is_numbered_copy` are computed once above,
+        # next to the copy-marker penalty, so the penalty and the bonus
+        # exemption can never drift apart again -- that drift was the defect.
+        if not is_numbered_copy:
             max_score += 1
 
         return max_score
@@ -277,8 +380,15 @@ class DateExtractor:
         - Patterns containing non-alphabetic characters (' (1)', '_copy',
           ' - copy', 'new ') are matched as literal substrings, because
           their own delimiters already provide the needed boundaries.
+        - Round 16: non-ASCII alphabetic patterns ('نسخة', 'نسخه') are ALSO
+          matched as substrings. `str.isalpha()` is True for Arabic letters,
+          so without the isascii() guard they took the token branch -- and
+          the token split is [^a-z]+, which deletes every Arabic character,
+          leaving [''] and making an Arabic pattern impossible to ever match.
+          Tokenising on [^a-z]+ is correct for Latin keywords and is kept
+          exactly as it was for them.
         """
-        if pattern.isalpha():
+        if pattern.isalpha() and pattern.isascii():
             tokens = re.split(r'[^a-z]+', filename_lower)
             return pattern in tokens
         return pattern in filename_lower

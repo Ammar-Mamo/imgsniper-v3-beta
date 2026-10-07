@@ -937,11 +937,24 @@ P('the office scan never mentions the sample pre-filter',
 #    'recovered', 'duplicate' and ' (1)' were ALREADY in the map before this
 #    round; the markers added for video must NOT be.)
 importance = date_extractor.filename_importance
-VIDEO_ONLY_MARKERS = ('نسخة', 'مكرر', 'تكرار', 'مسترد', 'استرداد', 'استعادة',
+VIDEO_ONLY_MARKERS = ('مكرر', 'تكرار', 'مسترد', 'استرداد', 'استعادة',
                       'احتياطي', 'مؤقت', 'clone', 'recovery', 'restored')
 P('date_extractor.filename_importance gained no video-only marker',
   not any(marker in importance for marker in VIDEO_ONLY_MARKERS),
   [marker for marker in VIDEO_ONLY_MARKERS if marker in importance])
+# Round 16 deliberately added 'نسخة' / 'نسخه' to the SHARED table. They are NOT
+# video-only markers: 'نسخة' is the literal Arabic equivalent of 'copy', which
+# has sat in this same shared map at the same weight since round 1, and the user
+# asked for copy detection across EVERY extension -- images, documents, archives
+# and video alike. They are therefore removed from the guard list above and
+# asserted positively here, so the guard still catches a genuine video-only leak
+# while this intentional shared addition stays documented rather than silent.
+P("round 16: 'نسخة'/'نسخه' are shared copy markers weighted exactly like 'copy'",
+  importance.get('نسخة') == importance.get('copy')
+  and importance.get('نسخه') == importance.get('copy'),
+  {'نسخة': importance.get('نسخة'), 'نسخه': importance.get('نسخه'),
+   'copy': importance.get('copy')})
+
 P('the markers that already existed are still there (behaviour preserved)',
   importance.get('copy') == 2 and importance.get('recovered') == 1
   and importance.get(' (1)') == 2, {k: importance.get(k) for k in ('copy', 'recovered', ' (1)')})
