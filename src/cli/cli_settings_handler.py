@@ -10,7 +10,8 @@ from rich.prompt import IntPrompt, Confirm
 from rich.text import Text
 
 from ..core.config import (config, DEFAULT_PRIORITY_ORDER, DEFAULT_FILTERS,
-                           RECOVERY_FILTERS, RECOVERY_TOGGLE_KEYS)
+                           RECOVERY_FILTERS, RECOVERY_TOGGLE_KEYS,
+                           recovery_mode_active)
 from ..core.i18n.i18n import i18n
 from ..utils.helpers.console_input import flush_pending_input, pause
 
@@ -94,20 +95,12 @@ class CLISettingsHandler:
     def _recovery_mode_active() -> bool:
         """True when the scan filters are the relaxed Recovery Mode values.
 
-        Detected from the VALUES, not from a separate flag: that way the menu
-        cannot claim a state the filters do not actually have (and a user who
-        edits settings.json by hand still sees the truth).
+        Round 17: delegates to ``config.recovery_mode_active`` instead of
+        re-implementing the check, because ``announce_scan_skips`` needs the
+        identical answer. Two copies of "is Recovery Mode on" is exactly how a
+        menu ends up claiming a state the filters do not have.
         """
-        filters = config.get('filters', {}) or {}
-        if not isinstance(filters, dict):
-            return False
-        try:
-            no_cap = int(filters.get('max_file_size_mb', 0) or 0) == 0
-        except (TypeError, ValueError):
-            no_cap = False
-        return (no_cap
-                and bool(filters.get('include_hidden', False))
-                and not (filters.get('exclude_patterns') or []))
+        return recovery_mode_active()
 
     def _toggle_recovery_mode(self):
         """Round 12: switch the scan filters between the shipped limits and

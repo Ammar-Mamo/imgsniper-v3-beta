@@ -64,6 +64,39 @@ VIDEO_SAMPLE_BYTES = 1024 * 1024
 # overlap reading and hashing.
 VIDEO_MAX_HASH_WORKERS = 4
 
+# ---------------------------------------------------------------------------
+# ⚠️  WARNING / إنذار — READ BEFORE CHANGING THIS CONSTANT
+#
+# The stage-2 sample pre-filter is hard-coded to 4 threads. This is a
+# DELIBERATE, TEMPORARY compromise, not a tuned value.
+#
+# WHY 4 AND NOT THE SCAN-MODE COUNT: stage 2 issues TWO seeks per file
+# (first MiB + last MiB). On a spinning USB HDD every seek costs ~12 ms, so
+# running the scan-mode count (up to 16 in Ultra) would thrash the read head
+# across 16 unrelated file positions and finish SLOWER than fewer threads.
+# 4 was chosen as a safe middle ground for the machine this was tested on.
+#
+# WHY THIS IS NOT FUTURE-PROOF: the project is meant to serve every class of
+# user, not one machine. 4 fixed threads is:
+#   * too few  on a modern NVMe drive, where 16+ concurrent 2 MiB reads are
+#              cheap and would cut this stage several-fold
+#     (measured on this project's own data: ~11 600 candidates x 2 MiB = ~23 GiB
+#      -- minutes of pure I/O that a fast drive could absorb far quicker),
+#   * possibly still too many on a very slow or heavily fragmented drive.
+#
+# WHAT SHOULD REPLACE IT (tracked work, not done yet):
+#   1. detect the underlying medium -- rotational (HDD) vs solid-state (SSD/NVMe)
+#      and removable vs fixed -- instead of assuming one number;
+#   2. derive the worker count from that, the way the scan modes already derive
+#      theirs from CPU count and RAM (scan_modes.py);
+#   3. let the scan mode (Normal/Medium/Advanced/Ultra) actually influence this
+#      stage too, since today it is ignored here on purpose.
+#
+# Until (1)-(3) exist, this constant is the ONLY place stage-2 parallelism is
+# set, and changing it silently changes video-scan speed on every machine.
+# ---------------------------------------------------------------------------
+VIDEO_MAX_SAMPLE_WORKERS = 4
+
 
 def calculate_sample_hash(file_path: str,
                           sample_bytes: int = VIDEO_SAMPLE_BYTES) -> Optional[str]:
@@ -184,17 +217,92 @@ class VideoDuplicateDetector(DuplicateDetector):
             }
 
         # ---- Stage 2: sample pre-filter (<= 2 MiB per candidate) ---------
+        #
+        # WHY THIS IS PARALLEL AND VISIBLE (Round 17): this stage used to be a
+        # plain single-threaded `for` loop with no progress bar at all. On a
+        # real library that meant ~11 600 candidates x 2 MiB = ~23 GiB read in
+        # total silence -- ten minutes in which the console showed nothing and
+        # the process looked frozen (CPU ~0%, RAM flat, because it is pure
+        # disk I/O on one thread). The heavy stage 3 right below already had a
+        # bar and threads; the lighter-looking stage 2 had neither, and it was
+        # the single largest window of silence in the whole program.
+        #
+        # Two invariants are preserved exactly:
+        #   1. A sample can only rule files OUT. It never decides a duplicate
+        #      and no file is ever moved on it -- the verdict stays the
+        #      full-file SHA-256 of stage 3.
+        #   2. GROUPING ORDER IS DETERMINISTIC. Results are collected first and
+        #      then grouped by iterating the candidates in their original scan
+        #      order, never in `as_completed` order. Building the dict inside
+        #      the completion loop would make the report's group numbering
+        #      depend on which thread won the race, so two runs over the same
+        #      folder could number the same groups differently.
+        sample_flat = [candidate for paths in size_candidates for candidate in paths]
+        sample_of: Dict[str, str] = {}
+
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+            TextColumn("{task.completed}/{task.total}"),
+            TimeElapsedColumn(),
+            console=console
+        ) as progress:
+
+            task = progress.add_task(i18n.get('common.sampling'),
+                                     total=len(sample_flat))
+            # Deliberately NOT the scan-mode count: see the WARNING on
+            # VIDEO_MAX_SAMPLE_WORKERS. Two seeks per file on a spinning disk
+            # makes more threads slower, not faster.
+            sample_workers = max(1, min(self._get_max_workers(),
+                                        VIDEO_MAX_SAMPLE_WORKERS))
+            executor_class = self._get_executor_type()
+
+            try:
+                with executor_class(max_workers=sample_workers) as executor:
+                    future_to_file = {
+                        executor.submit(calculate_sample_hash, candidate,
+                                        VIDEO_SAMPLE_BYTES): candidate
+                        for candidate in sample_flat
+                    }
+
+                    for future in as_completed(future_to_file):
+                        candidate = future_to_file[future]
+                        try:
+                            sample = future.result()
+                            if sample:
+                                sample_of[candidate] = sample
+                        except Exception as exc:
+                            # Never a silent pass: a file whose sample cannot be
+                            # read simply never joins a sample group, so it can
+                            # never be deleted either -- the safe direction.
+                            logging.debug('Video sample failed for %s: %s',
+                                          candidate, exc)
+                        finally:
+                            progress.advance(task)
+            except Exception as exc:
+                # Same conservative fallback as stage 3: if the pool itself
+                # cannot be used, fall back to reading sequentially rather than
+                # abandoning the scan.
+                logging.debug('Video sample pool failed, falling back: %s', exc)
+                for candidate in sample_flat:
+                    sample = calculate_sample_hash(candidate, VIDEO_SAMPLE_BYTES)
+                    if sample:
+                        sample_of[candidate] = sample
+
+        # Group in the ORIGINAL scan order so the result is byte-for-byte the
+        # same as the sequential loop this replaced.
         sample_groups: Dict[Any, List[str]] = {}
         sampled_bytes = 0
-        for paths in size_candidates:
-            for candidate in paths:
-                sample = calculate_sample_hash(candidate, VIDEO_SAMPLE_BYTES)
-                if not sample:
-                    continue
-                size = sizes.get(candidate, 0)
-                sampled_bytes += min(size, 2 * VIDEO_SAMPLE_BYTES)
-                key = (Path(candidate).suffix.lower(), size, sample)
-                sample_groups.setdefault(key, []).append(candidate)
+        for candidate in sample_flat:
+            sample = sample_of.get(candidate)
+            if not sample:
+                continue
+            size = sizes.get(candidate, 0)
+            sampled_bytes += min(size, 2 * VIDEO_SAMPLE_BYTES)
+            key = (Path(candidate).suffix.lower(), size, sample)
+            sample_groups.setdefault(key, []).append(candidate)
 
         sample_candidates = [paths for paths in sample_groups.values() if len(paths) > 1]
         total_sample_candidates = sum(len(paths) for paths in sample_candidates)

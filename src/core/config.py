@@ -49,6 +49,48 @@ RECOVERY_FILTERS = {
 # The filters Recovery Mode actually changes, in menu-display order.
 RECOVERY_TOGGLE_KEYS = ('max_file_size_mb', 'exclude_patterns', 'include_hidden')
 
+# Round 17: which SKIP REASONS Recovery Mode actually lifts.
+#
+# A real recovery scan reported "61 files were NOT scanned" and then advised
+# "Settings -> Recovery Mode scans these files too" while Recovery Mode was
+# ALREADY ON. Both halves were wrong: the advice named a mode the user had
+# already enabled, and the 61 files were skipped by filters.min_file_size_bytes
+# -- a floor Recovery Mode deliberately does NOT lift (a 3-byte Android cache
+# stub is not a photo, and lowering the floor would drag 0-byte files into
+# duplicate groups).
+#
+# So the advice is now conditional on this set: it is only printed when at least
+# one skipped file was dropped by a limit Recovery Mode genuinely removes.
+# 'system', 'unreadable', 'not_regular' and 'own_output' are absent by design --
+# they are safety rules, not tunables, in both modes.
+RECOVERY_LIFTABLE_REASONS = ('too_large', 'excluded_pattern', 'hidden')
+
+
+def recovery_mode_active(filters=None) -> bool:
+    """True when the scan filters are the relaxed Recovery Mode values.
+
+    Detected from the VALUES, never from a separate flag: a menu cannot claim a
+    state the filters do not have, and a user who edits settings.json by hand
+    still sees the truth.
+
+    Lives here rather than in the CLI because ``announce_scan_skips`` needs the
+    same answer to stop advising a mode that is already enabled -- and both
+    callers already import this module, so there is no duplication and no
+    circular import.
+    """
+    if filters is None:
+        filters = config.get('filters', {}) or {}
+    if not isinstance(filters, dict):
+        return False
+    try:
+        no_cap = int(filters.get('max_file_size_mb', 0) or 0) == 0
+    except (TypeError, ValueError):
+        no_cap = False
+    return (no_cap
+            and bool(filters.get('include_hidden', False))
+            and not (filters.get('exclude_patterns') or []))
+
+
 class Config:
     """Configuration manager for the application."""
     

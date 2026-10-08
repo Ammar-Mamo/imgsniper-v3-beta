@@ -29,7 +29,8 @@ import stat as stat_module
 from pathlib import Path
 from typing import Dict, List, Set
 
-from ...core.config import config
+from ...core.config import (config, RECOVERY_LIFTABLE_REASONS,
+                            recovery_mode_active)
 from ...core.i18n.i18n import i18n
 
 import sys
@@ -363,12 +364,43 @@ def announce_scan_skips(console) -> int:
             line = f"{count} ({reason})"
         console.print(f"[dim]     - {line}[/dim]")
 
-    console.print("[dim]     " + _skip_text(
-        'filters.recovery_hint',
-        'Tip: Settings → Recovery Mode scans these files too '
-        '(no size cap, hidden files included, no name exclusions).',
-        'تلميح: الإعدادات ← وضع الاسترجاع يفحص هذه الملفات أيضًا '
-        '(بلا حدّ للحجم، مع الملفات المخفية، وبلا استثناء للأسماء).') + "[/dim]")
+    # Round 17: the advice is now CONDITIONAL. It used to print unconditionally,
+    # which produced two distinct lies on a real recovery scan:
+    #   * Recovery Mode was ALREADY ON, and the line still said "enable it";
+    #   * the 61 skipped files were dropped by filters.min_file_size_bytes, a
+    #     floor Recovery Mode deliberately does NOT lift -- so enabling it would
+    #     have changed nothing at all.
+    # Only reasons in RECOVERY_LIFTABLE_REASONS can actually be rescued.
+    def _hint(key: str, english: str, arabic: str) -> str:
+        text = _skip_text(key, english, arabic)
+        try:
+            return text.format(min_bytes)
+        except (IndexError, KeyError, ValueError):     # pragma: no cover
+            return text
+
+    liftable = sum(skips.get(reason, 0) for reason in RECOVERY_LIFTABLE_REASONS)
+    if recovery_mode_active(filters):
+        console.print("[dim]     " + _hint(
+            'filters.recovery_hint_already_on',
+            'Recovery Mode is already ON: these files are skipped by rules it does '
+            'not lift (the {} byte floor, system areas, unreadable files).',
+            'وضع الاسترجاع مُفعّل أصلًا: هذه الملفات تُتخطّى بقواعد لا يرفعها '
+            '(أرضية {} بايت، مناطق النظام، الملفات التي تعذّرت قراءتها).') + "[/dim]")
+    elif liftable:
+        console.print("[dim]     " + _hint(
+            'filters.recovery_hint',
+            'Tip: Settings → Recovery Mode scans these files too '
+            '(no size cap, hidden files included, no name exclusions).',
+            'تلميح: الإعدادات ← وضع الاسترجاع يفحص هذه الملفات أيضًا '
+            '(بلا حدّ للحجم، مع الملفات المخفية، وبلا استثناء للأسماء).') + "[/dim]")
+    else:
+        console.print("[dim]     " + _hint(
+            'filters.recovery_hint_wont_help',
+            'Recovery Mode would NOT change this: these files are skipped by the '
+            '{} byte floor, which it keeps on purpose (sub-KB stubs are cache '
+            'noise, not media).',
+            'وضع الاسترجاع لن يغيّر هذا: هذه الملفات تُتخطّى بأرضية {} بايت، '
+            'والتي يبقيها عمدًا (الملفات دون الكيلوبايت ضجيج كاش لا وسائط).') + "[/dim]")
     return total
 
 
