@@ -41,6 +41,10 @@ class ImageCLI:
             elif choice == 6:
                 self.operation_handler.handle_face_detection_delete()
             elif choice == 7:
+                # Round 18: undo the image deletions (corrupted / duplicates /
+                # similar / small) and nothing else.
+                self.operation_handler.handle_restore('images')
+            elif choice == 8:
                 # Round 8: settings moved to the MAIN menu -- this menu now
                 # contains image operations only.
                 break

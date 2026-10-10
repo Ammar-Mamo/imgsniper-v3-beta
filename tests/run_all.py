@@ -39,6 +39,8 @@ SUITES = [
     ('test_fixes_round14.py', 'Round 14 -- every long phase shows a live counter, and a key pressed while the tool was busy can never answer a later prompt'),
     ('test_fixes_round15.py', 'Round 15 -- filename-importance INPUT fixes: a parenthesised word is not a numbered copy, and a recovery tool\'s carved name earns no keyword reward'),
     ('test_fixes_round16.py', 'Round 16 -- numbered-copy detection covers ANY number in parentheses, and Arabic copy wording (نسخة / Arabic-Indic digits / bidi marks) is detected at all'),
+    ('test_fixes_round18.py', 'Round 18 -- the recycle-bin MOVE path: per-source folder structure, free-space gate before deleting, husk cleanup + size verification on failure, and a dry run that finally computes the real destination'),
+    ('test_fixes_round19.py', 'Round 19 -- UNDO: per-section restore from the deletion reports, "Moved to" treated as a hint (reported name -> original name -> collision suffix), copy-not-move, never overwrite, dry-run preview first, and a restore report that is never re-read as a deletion'),
 ]
 
 
@@ -66,20 +68,42 @@ def main() -> int:
         print(f'\n>>> {name} :: {description}')
         started = time.time()
         try:
+            # Round 19: capture the child's output instead of discarding it.
+            # It used to go to DEVNULL, so a suite that failed under run_all
+            # (but passed when run by hand) left NO evidence anywhere -- the
+            # summary said "inspect the per-suite logs" yet only the first five
+            # suites write one. Flaky, order-dependent failures were therefore
+            # undiagnosable. Now every suite's output is kept in memory, and a
+            # failing suite's full output is written to <suite>.fail.log and its
+            # tail printed inline.
             proc = subprocess.run(
                 [sys.executable, str(path)],
                 cwd=str(ROOT),
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                encoding='utf-8',
+                errors='replace',
             )
             code = proc.returncode
+            output = proc.stdout or ''
         except Exception as exc:                       # pragma: no cover
             print(f'    could not launch: {exc}')
             code = -1
+            output = str(exc)
         elapsed = time.time() - started
 
         status = 'PASS' if code == 0 else 'FAIL'
         print(f'    [{status}] exit={code} in {elapsed:.1f}s')
+        if code != 0:
+            fail_log = ROOT / f'{path.stem}.fail.log'
+            try:
+                fail_log.write_text(output, encoding='utf-8')
+                print(f'    full output written to {fail_log.name}')
+            except OSError:
+                pass
+            tail = [ln for ln in output.splitlines() if ln.strip()][-12:]
+            for line in tail:
+                print(f'    | {line}')
         results.append((name, description, code, elapsed))
 
     print('\n' + '=' * 72)

@@ -12,7 +12,10 @@ from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeEl
 
 from ...core.config import config
 from ..i18n.i18n import i18n
-from ...utils.helpers.file_utils import move_to_recycle_bin, reset_session_folder, handle_protected_files_with_user_choice
+from ...utils.helpers.file_utils import (move_to_recycle_bin, reset_session_folder,
+                                         handle_protected_files_with_user_choice,
+                                         ensure_recycle_bin_capacity,
+                                         get_recycle_bin_root)
 from ...utils.helpers.progress_ui import track
 from ...utils.reports.report_generator import ReportGenerator
 
@@ -56,6 +59,15 @@ class SimilarityProcessor:
         files_to_delete, protected_count, force_deleted_count = handle_protected_files_with_user_choice(
             files_to_delete, console, subfolder="similar"
         )
+
+        # Round 18: capacity gate. This is the exact operation that died on a
+        # real 2 TB library: the recycle bin sat on a 172 GB system disk while
+        # the images sat on a 2 TB disk, the disk filled part-way through, every
+        # later move failed with ENOSPC, the failures were swallowed, and the
+        # report writer hit ENOSPC too - so the run produced 0-byte husks and no
+        # report at all. The check now runs BEFORE a single file is touched.
+        if not ensure_recycle_bin_capacity(files_to_delete, console):
+            return
         
         # جمع معلومات تفصيلية لجميع الملفات قبل الحذف
         all_files_info = {}
@@ -89,6 +101,7 @@ class SimilarityProcessor:
             task = progress.add_task(i18n.get('common.deleting'), total=len(files_to_delete))
             
             deleted_files = []
+            failed_files = []   # Round 18: moves that returned False or raised
             moved_map = {}   # Round 8: {original path: recycle-bin destination}
             for file_path in files_to_delete:
                 try:
@@ -100,22 +113,36 @@ class SimilarityProcessor:
                             deleted_files.append(file_path)
                             if move_result != "dry_run":
                                 moved_map[file_path] = move_result
-                except Exception:
-                    pass  # المتابعة مع الملفات الأخرى
-                
+                        elif move_result is False:
+                            failed_files.append(file_path)
+                except Exception as e:
+                    # Round 18: this used to be a bare `pass`. When the disk
+                    # filled, EVERY remaining move raised here and the run still
+                    # looked successful, so the user discovered the problem days
+                    # later. Failures are now counted, logged and reported.
+                    logging.error("Similar-images move raised for %s: %s", file_path, e)
+                    failed_files.append(file_path)
+
                 progress.advance(task)
         
         # Round 8: ONE dry-run summary line instead of one console line per
         # file (the per-file list now lives in imgsniper.log and the report).
         if config.get('safety.dry_run_mode', False):
             console.print(f"[bold magenta]🔍 {i18n.get('safety.dry_run_summary').format(len(deleted_files))}[/bold magenta]")
-        
+
+        # Round 18: failed moves are announced instead of vanishing. Every one of
+        # these files is still exactly where it was - the run simply could not
+        # move it - and the individual reasons are in imgsniper.log.
+        if failed_files:
+            console.print(f"[bold yellow]{i18n.get('safety.failed_moves_warning').format(len(failed_files))}[/bold yellow]")
+            for path in failed_files:
+                logging.error("Similar-images file NOT moved: %s", path)
+
         # عرض معلومات سلة المحذوفات
         if deleted_files:
-            recycle_bin_path = config.get('paths.recycle_bin', 'recycle-bin')
-            if not recycle_bin_path:
-                recycle_bin_path = 'recycle-bin'
-            recycle_bin = Path.cwd() / recycle_bin_path
+            # Round 18: the same deterministic root move_to_recycle_bin() uses,
+            # so the announced location can never differ from the real one.
+            recycle_bin = get_recycle_bin_root()
             console.print(f"[blue]📁 {i18n.get('common.files_moved_to_recycle').format(len(deleted_files), recycle_bin)}[/blue]")
         
         # Show نهائي ملخص

@@ -17,7 +17,9 @@ from ..i18n.i18n import i18n
 from ...utils.helpers.file_utils import (get_all_images, move_to_recycle_bin,
                                          reset_session_folder,
                                          handle_protected_files_with_user_choice,
-                                         announce_scan_skips, reset_scan_skips)
+                                         announce_scan_skips, reset_scan_skips,
+                                         ensure_recycle_bin_capacity,
+                                         get_recycle_bin_root)
 from ...utils.helpers.progress_ui import live_counter
 from ...utils.helpers.image_codec import open_image_with_reason
 from ...utils.helpers.scan_modes import scan_mode_manager
@@ -221,6 +223,11 @@ class CorruptionDetector:
         corrupted_files, protected_count, force_deleted_count = handle_protected_files_with_user_choice(
             corrupted_files, console, subfolder="corrupted"
         )
+
+        # Round 18: capacity gate - see ensure_recycle_bin_capacity() for the
+        # real 2 TB incident this prevents. Runs before a single file is touched.
+        if not ensure_recycle_bin_capacity(corrupted_files, console):
+            return
         
         with Progress(
             SpinnerColumn(),
@@ -235,6 +242,7 @@ class CorruptionDetector:
             task = progress.add_task(i18n.get('common.deleting'), total=len(corrupted_files))
             
             deleted_files = []
+            failed_files = []   # Round 18: moves that returned False or raised
             moved_map = {}   # Round 8: {original path: recycle-bin destination}
             for file_path in corrupted_files:
                 try:
@@ -243,9 +251,14 @@ class CorruptionDetector:
                         deleted_files.append(file_path)
                         if move_result != "dry_run":
                             moved_map[file_path] = move_result
+                    elif move_result is False:
+                        failed_files.append(file_path)
                 except Exception as e:
-                    pass  # Continue with other ملفات
-                
+                    # Round 18: was a bare `pass`, so a full disk (or any other
+                    # failure) disappeared without a trace. Counted and logged.
+                    logging.error("Corrupted-images move raised for %s: %s", file_path, e)
+                    failed_files.append(file_path)
+
                 progress.advance(task)
         
         # Round 8: ONE dry-run summary line instead of one console line per
@@ -253,12 +266,19 @@ class CorruptionDetector:
         if config.get('safety.dry_run_mode', False):
             console.print(f"[bold magenta]🔍 {i18n.get('safety.dry_run_summary').format(len(deleted_files))}[/bold magenta]")
         
+        # Round 18: failed moves are announced instead of vanishing. Every one of
+        # these files is still exactly where it was - the run simply could not
+        # move it - and the individual reasons are in imgsniper.log.
+        if failed_files:
+            console.print(f"[bold yellow]{i18n.get('safety.failed_moves_warning').format(len(failed_files))}[/bold yellow]")
+            for path in failed_files:
+                logging.error("Corrupted-images file NOT moved: %s", path)
+
         # Show recycle bin info
         if deleted_files:
-            recycle_bin_path = config.get('paths.recycle_bin', 'recycle-bin')
-            if isinstance(recycle_bin_path, str):
-                recycle_bin = Path.cwd() / recycle_bin_path
-                console.print(f"[blue]📁 {i18n.get('common.files_moved_to_recycle').format(len(deleted_files), recycle_bin)}[/blue]")
+            # Round 18: the same deterministic root move_to_recycle_bin() uses.
+            recycle_bin = get_recycle_bin_root()
+            console.print(f"[blue]📁 {i18n.get('common.files_moved_to_recycle').format(len(deleted_files), recycle_bin)}[/blue]")
         
         # Show نهائي ملخص
         total_processed = len(deleted_files) + force_deleted_count

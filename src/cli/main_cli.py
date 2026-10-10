@@ -17,6 +17,7 @@ from ..core.i18n.i18n import i18n
 from .image_cli import ImageCLI
 from .cli_settings_handler import CLISettingsHandler
 from ..utils.helpers.console_input import flush_pending_input, pause
+from ..utils.helpers.file_utils import get_recycle_bin_root
 
 class MainCLI:
     """Main CLI interface."""
@@ -44,10 +45,13 @@ class MainCLI:
 
         # Create the recycle bin folder. parents=True so a nested path like
         # "bin/2025/session" works instead of raising FileNotFoundError.
-        recycle_bin_path = config.get('paths.recycle_bin', 'recycle-bin')
-        if recycle_bin_path and isinstance(recycle_bin_path, str):
-            recycle_bin = base_path / recycle_bin_path
-            recycle_bin.mkdir(parents=True, exist_ok=True)
+        # Round 18: resolved through get_recycle_bin_root() so the folder created
+        # here is the SAME one move_to_recycle_bin() writes to. It used to be
+        # Path.cwd() in both places, which made the bin's location depend on the
+        # launch directory; the two must never disagree, or files get moved into
+        # a bin the startup code never created.
+        recycle_bin = get_recycle_bin_root()
+        recycle_bin.mkdir(parents=True, exist_ok=True)
 
         # Create the reports folder (also supports nested paths)
         reports_path = config.get('paths.reports', 'reports')
@@ -167,6 +171,12 @@ class MainCLI:
 
             if option_id is None:
                 return
+
+            # Round 18: the undo entry is NOT a duplicate scan -- route it to the
+            # restore flow, which only ever reads THIS section's own reports.
+            if option_id == 'restore':
+                operation_handler.handle_restore(section_key)
+                continue
 
             extensions = None
             for option, option_extensions, _label_key in options:

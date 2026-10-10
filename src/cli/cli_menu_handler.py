@@ -34,18 +34,21 @@ class CLIMenuHandler:
         self.console.print(f"4 - {i18n.get('image_operations.small')}")
         self.console.print(f"5 - {i18n.get('image_operations.watermark')}")
         self.console.print(f"6 - {i18n.get('image_operations.face_detect_delete')}")
+        # Round 18: undo for THIS section only -- it reads the image deletion
+        # reports and cannot touch a video, an archive or an office file.
+        self.console.print(f"7 - {i18n.get('restore.menu_option')}")
         # Round 8: settings moved to the MAIN menu -- this menu now contains
         # image operations only.
-        self.console.print(f"7 - {i18n.get('image_operations.back')}")
+        self.console.print(f"8 - {i18n.get('image_operations.back')}")
         self.console.print(f"0 - {i18n.get('image_operations.exit')}")
         self.console.print()
         
         try:
             flush_pending_input()
-            choice = IntPrompt.ask("", choices=[str(i) for i in range(8)], default="0")
+            choice = IntPrompt.ask("", choices=[str(i) for i in range(9)], default="0")
             return int(choice)
         except KeyboardInterrupt:
-            return 7
+            return 8
     
     def show_section_menu(self, section_key: str) -> Optional[str]:
         """Round 9: operation menu of a NON-image section (office/archives/other).
@@ -67,13 +70,19 @@ class CLIMenuHandler:
         
         for index, (option_id, _extensions, label_key) in enumerate(options, start=1):
             self.console.print(f"{index} - {i18n.get(label_key)}")
+        # Round 18: the undo entry is a UTILITY, not a scan type, so it is drawn
+        # after the scan options instead of being appended to SECTIONS['options'].
+        # That list must stay "one entry per scan type" -- other code and the
+        # round-9/11 tests rely on options[-1] being the combined 'all' entry.
+        restore_index = len(options) + 1
+        self.console.print(f"{restore_index} - {i18n.get('restore.menu_option')}")
         self.console.print(f"0 - {i18n.get('common.back')}")
         self.console.print()
         
         try:
             flush_pending_input()
             choice = IntPrompt.ask(
-                "", choices=[str(i) for i in range(len(options) + 1)], default="0"
+                "", choices=[str(i) for i in range(restore_index + 1)], default="0"
             )
         except KeyboardInterrupt:
             return None
@@ -81,6 +90,8 @@ class CLIMenuHandler:
         choice_int = int(choice)
         if choice_int == 0:
             return None
+        if choice_int == restore_index:
+            return 'restore'
         return options[choice_int - 1][0]
     
     def get_folders(self) -> List[str]:

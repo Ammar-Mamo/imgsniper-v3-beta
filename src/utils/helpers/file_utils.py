@@ -27,7 +27,7 @@ import os
 import shutil
 import stat as stat_module
 from pathlib import Path
-from typing import Dict, List, Set
+from typing import Any, Dict, List, Set
 
 from ...core.config import (config, RECOVERY_LIFTABLE_REASONS,
                             recovery_mode_active)
@@ -528,47 +528,328 @@ def get_all_images(folder_path: str, supported_formats: Set[str],
 
     return image_files
 
-# Global variable to store حالي جلسة مجلد
-_current_session_folder = None
+# Round 18: PER-SOURCE-FOLDER session cache (was a single global path).
+#
+# The old implementation kept ONE global folder for the whole operation and
+# returned it for EVERY file, ignoring the base_path argument completely:
+#
+#     if _current_session_folder and _current_session_folder.exists():
+#         return _current_session_folder      # base_path never consulted
+#
+# So the FIRST file of a run decided where every other file landed. A real
+# 2 TB run proved it: 5,687 corrupted images collected from all over D:\hdd
+# ended up in just two folders, and all 16,419 similar images in ONE folder,
+# with 13,449 of them (82%) renamed to "<name>_1", "<name>_2", ... because
+# unrelated files from unrelated folders collided on the same name. The
+# structured recycle bin this module promises ("moves files here with their
+# folder structure intact, so every removed file stays recoverable") was not
+# preserved at all, and a removed file's original location could no longer be
+# read back from disk.
+#
+# The cache is now keyed BY base_path: every distinct source folder keeps its
+# own session folder, so files land where their real path says they belong.
+_session_folders: Dict[Path, Path] = {}
+
+# Round 18: destinations already handed out during the CURRENT dry run. A dry
+# run writes nothing, so destination.exists() cannot see the collisions the
+# real run would hit; without this set a dry-run report would promise the very
+# same path for every same-named file and could not be compared to reality.
+_dry_run_reserved: Set[str] = set()
+
 
 def get_session_folder_name(base_path: Path) -> Path:
-    """Get a unique session folder name for the current operation."""
-    global _current_session_folder
-    
-    # If we alجاهز have a جلسة مجلد for this تشغيل, use it
-    if _current_session_folder and _current_session_folder.exists():
-        return _current_session_folder
-    
-    # إنشاء جديد جلسة مجلد
+    """Return the session folder belonging to THIS source folder.
+
+    Round 18: keyed per base_path. Two files from two different source folders
+    now get two different session folders instead of both being forced into
+    whichever folder the first file of the run happened to need.
+
+    The "(2)", "(3)" ... behaviour is unchanged and still separates one run's
+    output from an earlier run's output that already occupies base_path; it is
+    simply resolved once per source folder now, not once per operation.
+    """
+    cached = _session_folders.get(base_path)
+    if cached is not None:
+        return cached
+
+    # No previous output for this source folder: use it directly.
     if not base_path.exists():
-        _current_session_folder = base_path
+        _session_folders[base_path] = base_path
         return base_path
-    
+
+    # base_path is taken by an earlier run -> find a free sibling name.
     counter = 2
     original_name = base_path.name
     parent = base_path.parent
-    
+
     while True:
         new_name = f"{original_name} ({counter})"
         new_path = parent / new_name
         if not new_path.exists():
-            _current_session_folder = new_path
+            _session_folders[base_path] = new_path
             return new_path
         counter += 1
 
+
 def reset_session_folder():
-    """Reset the session folder for a new operation."""
-    global _current_session_folder
-    _current_session_folder = None
+    """Clear the per-source session cache for a new operation.
+
+    Round 18: also drops the dry-run reservation set, so a dry run never leaks
+    its simulated destinations into the next operation.
+    """
+    _session_folders.clear()
+    _dry_run_reserved.clear()
 
 # نقل الملف إلى سلة المهملات المنظمة
         # ينشئ هيكل مجلدات منظم حسب نوع العملية
         # يتعامل مع الملفات المحمية والمكررة الأسماء
         # يعيد مسار المجلد الذي تم النقل إليه عند النجاح
 
+def get_recycle_bin_root() -> Path:
+    """Resolve the recycle-bin root - the SINGLE source of truth for it.
+
+    Round 18: every place that needs the bin's location now calls this instead
+    of re-deriving it inline. Before this round move_to_recycle_bin(),
+    MainCLI._create_directories() and the four "files moved to" footers each
+    wrote their own `Path.cwd() / config.get('paths.recycle_bin', ...)`
+    expression, so the location announced to the user could drift from the one
+    actually written to, and the folder created at startup could differ from the
+    one the moves targeted.
+
+    Resolution is deliberately UNCHANGED (Path.cwd(), as it has always been):
+    _get_excluded_dir_prefixes() documents that either the project root or the
+    CWD "can be the real one depending on how the app was launched" and guards
+    against both, and the round-4 test suite sandboxes itself by chdir'ing into a
+    temp directory and expecting the bin to appear there. Anchoring this to the
+    project root instead would silently relocate a real user's bin and break
+    that isolation, for no gain: the value of this function is that all callers
+    now agree, not that the anchor moved.
+
+    An absolute configured value is honoured as-is; a relative one is anchored
+    to the current working directory.
+    """
+    configured = config.get('paths.recycle_bin', 'recycle-bin')
+    if not configured or not isinstance(configured, str):
+        configured = 'recycle-bin'
+    candidate = Path(configured)
+    if candidate.is_absolute():
+        return candidate
+    return Path.cwd() / candidate
+
+
+def _destination_taken(destination: Path) -> bool:
+    """True when a destination is used on disk OR promised by this dry run."""
+    if str(destination) in _dry_run_reserved:
+        return True
+    return destination.exists()
+
+
+def compute_recycle_destination(file_path: str, subfolder: str = None) -> Path:
+    """Round 18: PURE destination computation - creates and moves nothing.
+
+    Shared by the dry-run path and the real path on purpose. A dry run that
+    computes its destination differently from the real run cannot reveal
+    destination bugs, which is exactly why seventeen rounds of dry-run report
+    review never exposed the session-folder pile-up fixed above: the dry-run
+    branch returned before ANY of this code ran.
+
+    Dry-run callers must register the result in _dry_run_reserved so that
+    same-named files receive the same "_1", "_2" ... suffixes a real run gives.
+    """
+    source = Path(file_path)
+    recycle_bin = get_recycle_bin_root()
+    if subfolder:
+        recycle_bin = recycle_bin / subfolder
+
+    cleaned_path = clean_path_for_recycle_bin(source)
+
+    if cleaned_path != Path("."):
+        destination_dir = get_session_folder_name(recycle_bin / cleaned_path)
+    else:
+        destination_dir = recycle_bin
+
+    destination = destination_dir / source.name
+
+    # Handle filename collisions
+    counter = 1
+    original_destination = destination
+    while _destination_taken(destination):
+        destination = destination_dir / (
+            f"{original_destination.stem}_{counter}{original_destination.suffix}"
+        )
+        counter += 1
+
+    return destination
+
+
+def _discard_partial_move(destination: Path) -> None:
+    """Round 18: remove the truncated file a FAILED cross-drive move leaves.
+
+    shutil.move() across volumes is copy2() followed by os.unlink(src). When
+    the copy dies halfway - a full disk is the common case - the unlink never
+    runs, so the source survives but a 0-byte or truncated file stays at the
+    destination. The old code caught the exception, returned False and left
+    that husk behind forever: one real run filled C: and dumped hundreds of
+    0-byte .jpg files into recycle-bin/similar, which the user later moved to
+    an external disk and understandably reported as "corrupted images".
+
+    Only ever called from the exception path, where the source still exists, so
+    removing the destination can never destroy the only copy.
+    """
+    try:
+        if destination.exists():
+            destination.unlink()
+    except OSError as e:
+        logger.warning("Could not remove partial file %s: %s", destination, e)
+
+
+# Round 18: headroom kept free on the recycle-bin volume. The operating system
+# itself needs room to keep working (page file, journals, temp files), so a move
+# that would leave exactly zero bytes free is treated as a failure even though
+# it technically fits.
+CAPACITY_SAFETY_MARGIN_BYTES = 512 * 1024 * 1024
+
+
+def _format_bytes(num) -> str:
+    """Human-readable size for the capacity-check messages."""
+    try:
+        num = float(num)
+    except (TypeError, ValueError):
+        return str(num)
+    for unit in ('B', 'KB', 'MB', 'GB', 'TB'):
+        if abs(num) < 1024.0 or unit == 'TB':
+            return f"{int(num)} B" if unit == 'B' else f"{num:.2f} {unit}"
+        num /= 1024.0
+    return f"{num:.2f} TB"
+
+
+def _drive_of(path) -> str:
+    """Comparable volume key for a path ('' when it cannot be determined)."""
+    try:
+        anchor = Path(path).anchor        # 'C:\\' on Windows, '/' on POSIX
+        return os.path.normcase(anchor) if anchor else ''
+    except (OSError, ValueError):
+        return ''
+
+
+def recycle_bin_capacity_report(file_paths) -> Dict[str, Any]:
+    """Round 18: PURE computation - how much room a deletion actually needs.
+
+    A move WITHIN one volume is os.rename(): instant, atomic and free. A move
+    ACROSS volumes is copy2() + unlink(): it needs the file's full size on the
+    destination volume, and when that volume fills up mid-run the copy dies and
+    leaves a 0-byte husk behind. Only cross-volume files are therefore counted;
+    a user whose recycle bin sits on the same disk as the photos is never
+    bothered by this check at all.
+
+    Returns {'needed', 'free', 'total', 'cross_volume', 'bin_drive', 'bin_root',
+    'ok'}.
+    """
+    bin_root = get_recycle_bin_root()
+    bin_drive = _drive_of(bin_root)
+
+    needed = 0
+    cross_volume = 0
+    total = 0
+    for path in file_paths:
+        if not path:
+            continue
+        try:
+            size = Path(path).stat().st_size
+        except OSError:
+            continue
+        total += 1
+        src_drive = _drive_of(path)
+        if bin_drive and src_drive and src_drive == bin_drive:
+            continue                      # same volume -> rename, costs nothing
+        needed += size
+        cross_volume += 1
+
+    # disk_usage() needs an EXISTING path, and the bin may not have been created
+    # yet (a fresh install, or a nested configured value like "bin/2025"). Walk up
+    # to the nearest ancestor that does exist: the volume's free space is the same
+    # from any point on it. Without this the gate would read free=None on a
+    # machine that has never run a deletion before and silently allow anything.
+    free = None
+    probe = bin_root
+    while True:
+        try:
+            if probe.exists():
+                free = shutil.disk_usage(str(probe)).free
+                break
+        except OSError:
+            break
+        if probe.parent == probe:
+            break
+        probe = probe.parent
+
+    ok = True
+    if needed > 0 and free is not None:
+        ok = (needed + CAPACITY_SAFETY_MARGIN_BYTES) <= free
+
+    return {'needed': needed, 'free': free, 'total': total,
+            'cross_volume': cross_volume, 'bin_drive': bin_drive or '?',
+            'bin_root': bin_root, 'ok': ok}
+
+
+def ensure_recycle_bin_capacity(file_paths, console) -> bool:
+    """Round 18: refuse to START a deletion that cannot finish.
+
+    Returns True when the operation may proceed and False when the user chose to
+    stop. Nothing has been moved either way - callers run this BEFORE the
+    deletion loop, which is the whole point: the old code discovered a full disk
+    one file at a time, thousands of files deep into the run.
+
+    A real 2 TB pass proved why this is needed. The recycle bin lived on a
+    172 GB system disk while the files lived on a 2 TB disk, the disk filled
+    part-way through the similar-images deletion, every later shutil.move()
+    failed with "[Errno 28] No space left on device", those errors were
+    swallowed by the callers' bare `except Exception: pass`, and the run ended
+    with hundreds of 0-byte husks in the bin and - because the report writer
+    also hit ENOSPC - no report at all.
+    """
+    if config.get('safety.dry_run_mode', False):
+        return True                       # a dry run moves nothing, needs no room
+
+    if not file_paths:
+        return True
+
+    info = recycle_bin_capacity_report(file_paths)
+
+    if info['needed'] == 0:
+        console.print(f"[dim]{i18n.get('safety.capacity_same_drive')}[/dim]")
+        return True
+
+    console.print(f"[bold cyan]{i18n.get('safety.capacity_title')}[/bold cyan]")
+    console.print("  " + i18n.get('safety.capacity_needed').format(
+        info['cross_volume'], _format_bytes(info['needed'])))
+    if info['free'] is not None:
+        console.print("  " + i18n.get('safety.capacity_free').format(
+            info['bin_drive'], _format_bytes(info['free'])))
+
+    if info['ok']:
+        console.print(f"[green]{i18n.get('safety.capacity_ok')}[/green]")
+        return True
+
+    console.print(f"[bold red]{i18n.get('safety.capacity_insufficient')}[/bold red]")
+    try:
+        answer = ask_line(f"{i18n.get('safety.capacity_proceed_question')} [y/N]: ")
+    except (EOFError, KeyboardInterrupt):
+        answer = ''
+    if str(answer).strip().lower() in ('y', 'yes'):
+        logger.warning("Capacity check overridden by the user: needed %s bytes, free %s bytes",
+                       info['needed'], info['free'])
+        return True
+
+    console.print(f"[bold red]{i18n.get('safety.capacity_aborted')}[/bold red]")
+    logger.warning("Operation aborted by the capacity check: needed %s bytes, free %s bytes",
+                   info['needed'], info['free'])
+    return False
+
+
 def move_to_recycle_bin(file_path: str, subfolder: str = None):
     """Move a file to the recycle bin directory preserving folder structure.
-    
+
     Args:
         file_path: Path to the file to move
         subfolder: Optional subfolder within recycle bin (e.g., 'small', 'corrupted')
@@ -580,103 +861,131 @@ def move_to_recycle_bin(file_path: str, subfolder: str = None):
     REMOVED rather than wired up: both described a guarantee this function
     already provides unconditionally, and a safety toggle that cannot actually
     be turned off is a false guarantee rather than a feature.
+
+    Round 18 hardening, after a real 2 TB run filled the system disk:
+      * the dry-run branch now computes and reports the REAL destination
+        instead of returning before any destination logic ran;
+      * the destination is computed by compute_recycle_destination(), the same
+        code in both modes;
+      * a FAILED move no longer leaves a 0-byte/truncated husk behind;
+      * a successful move is size-verified, and because shutil.move() has
+        already unlinked the source by then, a mismatch is reported and counted
+        as a failure but the bytes are NEVER deleted.
     """
     source = Path(file_path)
     if not source.exists():
         return
-    
+
     # safety.dry_run_mode: announce what WOULD be moved and touch nothing.
-    # Checked BEFORE any mkdir/session-folder creation so a dry run leaves the
-    # filesystem completely untouched (no empty recycle-bin dirs either).
+    # Checked BEFORE any mkdir so a dry run leaves the filesystem completely
+    # untouched (no empty recycle-bin dirs either).
     # The "dry_run" sentinel is deliberately NOT in the callers' skip-lists, so
     # reports and counters still show exactly what would have been deleted.
     # Round 8: the per-file announcement goes to the LOG FILE only -- one
     # console line per file used to flood the UI with thousands of lines on
-    # large libraries. The console keeps the single banner plus one summary
-    # line printed by the operation code.
+    # large libraries.
+    # Round 18: the announced line now includes the DESTINATION, computed by
+    # the very same function the real move uses. Before this round the dry-run
+    # branch returned here and get_session_folder_name() / clean_path_for_
+    # recycle_bin() were never executed at all, so no amount of dry-run report
+    # review could ever show where files would actually land.
     if config.get('safety.dry_run_mode', False):
-        logger.info("%s: %s", i18n.get('safety.dry_run_would_move'), source)
+        try:
+            destination = compute_recycle_destination(file_path, subfolder)
+        except Exception as e:
+            logger.warning("Dry-run destination could not be computed for %s: %s", source, e)
+            destination = None
+        if destination is not None:
+            _dry_run_reserved.add(str(destination))
+            logger.info("%s: %s -> %s",
+                        i18n.get('safety.dry_run_would_move'), source, destination)
+        else:
+            logger.info("%s: %s", i18n.get('safety.dry_run_would_move'), source)
         return "dry_run"
-    
-    # جلب recycle bin مسار
-    recycle_bin = Path.cwd() / config.get('paths.recycle_bin', 'recycle-bin')
-    
-    # Add subمجلد if specified
+
+    # Round 18: single deterministic root (was Path.cwd()).
+    recycle_bin = get_recycle_bin_root()
     if subfolder:
         recycle_bin = recycle_bin / subfolder
-    
     recycle_bin.mkdir(parents=True, exist_ok=True)
-    
-    # جلب cleaned مسار هيكل
-    cleaned_path = clean_path_for_recycle_bin(source)
-    
-    # إنشاء وجهة مسار preserving معنىful مجلد هيكل
-    if cleaned_path != Path("."):
-        base_destination_dir = recycle_bin / cleaned_path
-        
-        # جلب جلسة مجلد اسم (same for جميع ملفات in this تشغيل)
-        destination_dir = get_session_folder_name(base_destination_dir)
-        destination_dir.mkdir(parents=True, exist_ok=True)
-        destination = destination_dir / source.name
-    else:
-        destination = recycle_bin / source.name
-    
-    # Handle ملفاسم تعارضs
-    counter = 1
-    original_destination = destination
-    while destination.exists():
-        stem = original_destination.stem
-        suffix = original_destination.suffix
-        if cleaned_path != Path("."):
-            destination = destination_dir / f"{stem}_{counter}{suffix}"
-        else:
-            destination = recycle_bin / f"{stem}_{counter}{suffix}"
-        counter += 1
-    
-    # فحص if ملف is read-only or protected before محاولةing to move
+
+    destination = compute_recycle_destination(file_path, subfolder)
     try:
-        # Test if we can وصول the ملف for writing
+        destination.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        logger.error("Cannot create recycle-bin folder %s: %s", destination.parent, e)
+        _safe_print(f"\u274c {i18n.get('protected_files.error_moving')} {source} \u2192 {destination}: {e}")
+        return False
+    # Check if the file is read-only or protected before attempting to move
+    try:
         if source.exists():
-            # فحص ملف سمات on Windows
             import stat
             file_stat = source.stat()
-            
-            # فحص if ملف is read-only
+
             if not (file_stat.st_mode & stat.S_IWRITE):
-                _safe_print(f"⏭️ {i18n.get('protected_files.skipping_readonly')}: {source}")
+                _safe_print(f"\u23ed\ufe0f {i18n.get('protected_files.skipping_readonly')}: {source}")
                 _safe_print(f"   {i18n.get('protected_files.file_protected')}")
                 return "skipped_readonly"
-            
-            # Try to open ملف to check if it's in use
+
+            # Try to open the file to check if it is in use
             try:
                 with open(source, 'r+b'):
                     pass
             except PermissionError:
-                _safe_print(f"⏭️ {i18n.get('protected_files.skipping_protected')}: {source}")
+                _safe_print(f"\u23ed\ufe0f {i18n.get('protected_files.skipping_protected')}: {source}")
                 _safe_print(f"   {i18n.get('protected_files.file_in_use')}")
                 return "skipped_protected"
-                
-    except Exception as e:
-        _safe_print(f"⏭️ {i18n.get('protected_files.access_check_failed')}: {source}")
+
+    except Exception:
+        _safe_print(f"\u23ed\ufe0f {i18n.get('protected_files.access_check_failed')}: {source}")
         return "skipped_error"
-    
-    # نقل the ملف only if it's not protected
+
+    # Round 18: size captured BEFORE the move so the result can be verified.
+    try:
+        source_size = source.stat().st_size
+    except OSError:
+        source_size = None
+
+    # Move the file only if it is not protected
     try:
         shutil.move(str(source), str(destination))
-        # Round 8: return the FULL destination path (was the parent folder) so
-        # the callers can show "moved to <path>" lines in the reports. Callers
-        # that only need the folder derive it with Path(result).parent.
-        return str(destination)  # Full path where the file was moved
     except PermissionError as e:
-        _safe_print(f"⚠️ {i18n.get('protected_files.protection_changed')}: {source}: {e}")
-        _safe_print(f"   {i18n.get('protected_files.protection_changed')}")
+        _discard_partial_move(destination)
+        logger.error("Move blocked (permission) %s -> %s: %s", source, destination, e)
+        _safe_print(f"\u26a0\ufe0f {i18n.get('protected_files.protection_changed')}: {source}: {e}")
         return False
     except FileNotFoundError as e:
-        _safe_print(f"❌ {i18n.get('protected_files.file_not_found')}: {source}: {e}")
+        _discard_partial_move(destination)
+        logger.error("Move failed (not found) %s -> %s: %s", source, destination, e)
+        _safe_print(f"\u274c {i18n.get('protected_files.file_not_found')}: {source}: {e}")
         return False
     except Exception as e:
-        _safe_print(f"❌ {i18n.get('protected_files.error_moving')} {source} → {destination}: {e}")
+        # Round 18: a full disk surfaces here (OSError 28 / WinError 112).
+        # The husk left at the destination is removed; the source is intact
+        # because shutil.move() unlinks it only AFTER a successful copy.
+        _discard_partial_move(destination)
+        logger.error("Move failed %s -> %s: %s", source, destination, e)
+        _safe_print(f"\u274c {i18n.get('protected_files.error_moving')} {source} \u2192 {destination}: {e}")
         return False
+
+    # shutil.move() returned, so the source is GONE and the destination is now
+    # the ONLY copy. It must never be deleted from here on: a size mismatch is
+    # logged and counted as a failure, but the bytes are kept.
+    if source_size is not None:
+        try:
+            moved_size = destination.stat().st_size
+        except OSError:
+            moved_size = None
+        if moved_size != source_size:
+            logger.error("Size mismatch after move (source %s bytes, moved %s bytes): %s",
+                         source_size, moved_size, destination)
+            _safe_print(f"\u26a0\ufe0f {i18n.get('safety.move_size_mismatch')}: {destination}")
+            return False
+
+    # Round 8: return the FULL destination path (was the parent folder) so the
+    # callers can show "moved to <path>" lines in the reports. Callers that
+    # only need the folder derive it with Path(result).parent.
+    return str(destination)
 
 # فحص ما إذا كان الملف محمي أو للقراءة فقط
         # يتحقق من صلاحيات النظام وحالة الاستخدام

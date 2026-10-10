@@ -254,6 +254,141 @@ class CLIOperationHandler:
         self.console.print(f"[yellow]{i18n.get('common.coming_soon')}[/yellow]")
         pause(i18n.get('common.press_any_key'))
     
+    def handle_restore(self, section_key: str = 'images'):
+        """Round 18: UNDO the deletions of ONE section.
+
+        Reads that section's own deletion reports and copies every removed file
+        back to the path the report recorded. Three rules make it safe:
+
+          * DRY RUN FIRST, always -- the plan is computed and shown before a
+            single byte is written, and the user confirms explicitly.
+          * COPY, never move -- the recycle bin keeps its copies, so a mistake
+            here cannot destroy the only remaining copy of a file.
+          * NEVER overwrite -- a file already sitting at the original path is
+            left alone and the copy lands next to it as *_restored.
+
+        Scoped by construction: RestoreManager only ever reads the report
+        prefixes listed in SECTION_OPERATIONS[section_key], so restoring images
+        cannot touch a video, an archive or an office file.
+        """
+        try:
+            from ..core.restore_manager import RestoreManager
+
+            self.console.clear()
+            self.console.print(
+                f"[bold cyan]{i18n.get('restore.title')}[/bold cyan]")
+            self.console.print(
+                f"[dim]{i18n.get('restore.scope_note').format(section_key)}[/dim]")
+            self.console.print(f"[dim]{i18n.get('restore.copy_note')}[/dim]")
+            self.console.print(
+                f"[dim]{i18n.get('restore.never_overwrite_note')}[/dim]")
+            self.console.print()
+            self.console.print(i18n.get('restore.scanning'))
+
+            manager = RestoreManager(section_key)
+            reports = manager.find_reports()
+            report_count = sum(len(v) for v in reports.values())
+            if not report_count:
+                self.console.print(
+                    f"[yellow]{i18n.get('restore.no_reports')}[/yellow]")
+                pause(i18n.get('common.press_any_key'))
+                return
+            self.console.print(
+                i18n.get('restore.reports_found').format(report_count))
+
+            # ---- DRY RUN: compute and show the plan, change nothing ----
+            plan = manager.build_plan()
+            if not plan:
+                self.console.print(
+                    f"[yellow]{i18n.get('restore.no_files')}[/yellow]")
+                pause(i18n.get('common.press_any_key'))
+                return
+            preview = manager.restore_all(plan, dry_run=True)
+            self._print_restore_counts(preview['counts'], dry_run=True)
+
+            flush_pending_input()
+            if not Confirm.ask(i18n.get('restore.confirm'), default=False):
+                self.console.print(
+                    f"[yellow]{i18n.get('restore.cancelled')}[/yellow]")
+                # The plan is still worth keeping: it documents what COULD be
+                # restored without the user having to run it again.
+                self._save_restore_report(manager, section_key, plan, preview)
+                pause(i18n.get('common.press_any_key'))
+                return
+
+            # ---- REAL RUN ----
+            self.console.print(f"\n[bold green]{i18n.get('restore.running')}[/bold green]")
+            plan = manager.build_plan()
+            result = manager.restore_all(plan, dry_run=False,
+                                         progress=self._restore_progress)
+            self.console.print(
+                f"\n[bold green]{i18n.get('restore.done_title')}[/bold green]")
+            self._print_restore_counts(result['counts'], dry_run=False)
+            if result.get('restored_bytes'):
+                megabytes = result['restored_bytes'] / (1024 * 1024)
+                self.console.print(
+                    f"  {i18n.get('restore.size')}: {megabytes:.2f} MB")
+            self._save_restore_report(manager, section_key, plan, result)
+
+        except Exception as e:
+            self.console.print(
+                f"[red]{i18n.get('common.error').format(str(e))}[/red]")
+
+        pause(i18n.get('common.press_any_key'))
+
+    def _print_restore_counts(self, counts: dict, dry_run: bool) -> None:
+        """Print the outcome of a restore, most important line first."""
+        order = [('would_restore', 'restore.would_restore')] if dry_run else \
+                [('restored', 'restore.restored')]
+        order += [('already_there', 'restore.already_there'),
+                  ('missing', 'restore.missing'),
+                  ('ambiguous', 'restore.ambiguous'),
+                  ('error', 'restore.errors')]
+        for status, key in order:
+            number = counts.get(status, 0)
+            if number:
+                style = 'red' if status == 'error' else (
+                    'yellow' if status in ('missing', 'ambiguous') else 'green')
+                self.console.print(f"  [{style}]{i18n.get(key)}: {number}[/{style}]")
+        # Any status this list does not know about is still shown, so a future
+        # status can never disappear silently from the summary.
+        known = {status for status, _key in order}
+        for status, number in counts.items():
+            if status not in known and number:
+                self.console.print(f"  {status}: {number}")
+
+    def _save_restore_report(self, manager, section_key: str,
+                             plan, summary) -> None:
+        """Write the restore report next to the deletion reports.
+
+        Uses manager.reports_dir so the undo report lands in the SAME folder as
+        the reports it was built from -- a user looking for "what happened" finds
+        both in one place.
+        """
+        try:
+            from ..utils.reports.restore_report_generator import (
+                RestoreReportGenerator)
+            path = RestoreReportGenerator(manager.reports_dir) \
+                .generate_restore_report(section_key, plan, summary)
+            self.console.print(i18n.get('restore.report_saved').format(path))
+        except Exception as e:
+            # Round 13: a report failure must never mask a completed operation.
+            self.console.print(
+                f"[yellow]{i18n.get('common.error').format(str(e))}[/yellow]")
+
+    def _restore_progress(self, position: int, total: int, _item) -> None:
+        """Progress line for a restore that may cover tens of thousands of files.
+
+        Prints at ~20 milestones instead of per file: a 60,000-file undo would
+        otherwise scroll the summary off the screen.
+        """
+        if not total:
+            return
+        step = max(1, total // 20)
+        if position % step == 0 or position == total:
+            percent = (position * 100) // total
+            self.console.print(f"  … {position}/{total} ({percent}%)")
+
     def _get_minimum_dimensions(self) -> tuple:
         """Get minimum dimensions for small images from user."""
         try:

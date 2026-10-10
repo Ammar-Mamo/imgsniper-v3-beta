@@ -123,6 +123,9 @@ class VideoDuplicateReportGenerator:
             out.write(i18n.get('reports.video_scanned_option').format(safe_option) + "\n")
             out.write(i18n.get('reports.video_match_rule') + "\n")
             try:
+                # Round 18: record whether this was a dry run and where the
+                # recycle bin actually was, so the report is self-describing.
+                self.formatter.write_run_metadata(out)
                 system_stats = system_monitor.get_detailed_info()
                 if system_stats and 'error' not in system_stats:
                     # Same one-line format the image/office writer uses

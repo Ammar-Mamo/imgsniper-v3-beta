@@ -27,7 +27,9 @@ from ..i18n.i18n import i18n
 from ...utils.helpers.file_utils import (get_all_images, move_to_recycle_bin,
                                          reset_session_folder,
                                          handle_protected_files_with_user_choice,
-                                         announce_scan_skips, reset_scan_skips)
+                                         announce_scan_skips, reset_scan_skips,
+                                         ensure_recycle_bin_capacity,
+                                         get_recycle_bin_root)
 from ...utils.helpers.progress_ui import live_counter
 from ...utils.helpers.scan_modes import scan_mode_manager
 from ...utils.helpers.progress_ui import track
@@ -210,7 +212,21 @@ class DuplicateDetector:
         was handled -- including the dry-run sentinel, so counters and reports
         still show exactly what WOULD have been removed. `moved_map` only ever
         holds real destinations, so a dry-run report cannot claim a move.
+
+        Round 18: runs the capacity gate BEFORE touching anything, and records
+        every file that could NOT be moved on self._last_failed_moves (which
+        _print_deletion_footer then announces). This helper is shared by the
+        image, office, archive and - through inheritance - video flows, so one
+        fix covers every section. Before this round a full disk, or any other
+        failure, was swallowed by a bare `except Exception: pass` and the
+        operation still reported itself as finished.
         """
+        self._last_failed_moves = []
+
+        # Round 18: capacity gate - see ensure_recycle_bin_capacity().
+        if not ensure_recycle_bin_capacity(files_to_delete, console):
+            return [], {}
+
         deleted_files = []
         moved_map = {}   # Round 8: {original path: recycle-bin destination}
 
@@ -233,8 +249,12 @@ class DuplicateDetector:
                         deleted_files.append(file_path)
                         if move_result != "dry_run":
                             moved_map[file_path] = move_result
-                except Exception:
-                    pass  # Continue with other ملفات
+                    elif move_result is False:
+                        self._last_failed_moves.append(file_path)
+                except Exception as e:
+                    # Round 18: was a bare `pass`. Counted and logged instead.
+                    logging.error("%s move raised for %s: %s", subfolder, file_path, e)
+                    self._last_failed_moves.append(file_path)
 
                 progress.advance(task)
 
@@ -255,14 +275,23 @@ class DuplicateDetector:
         if config.get('safety.dry_run_mode', False):
             console.print(f"[bold magenta]🔍 {i18n.get('safety.dry_run_summary').format(len(deleted_files))}[/bold magenta]")
 
+        # Round 18: failed moves are announced instead of vanishing. Every one of
+        # these files is still exactly where it was - the run simply could not
+        # move it - and the individual reasons are in imgsniper.log.
+        failed_moves = getattr(self, '_last_failed_moves', [])
+        if failed_moves:
+            console.print(f"[bold yellow]{i18n.get('safety.failed_moves_warning').format(len(failed_moves))}[/bold yellow]")
+            for path in failed_moves:
+                logging.error("%s file NOT moved: %s", subfolder or 'image', path)
+
         # Show recycle bin info
         if deleted_files:
-            recycle_bin_path = config.get('paths.recycle_bin', 'recycle-bin')
-            if isinstance(recycle_bin_path, str):
-                recycle_bin = Path.cwd() / recycle_bin_path
-                if subfolder:
-                    recycle_bin = recycle_bin / subfolder
-                console.print(f"[blue]📁 {i18n.get('common.files_moved_to_recycle').format(len(deleted_files), recycle_bin)}[/blue]")
+            # Round 18: the same deterministic root move_to_recycle_bin() uses,
+            # so the announced location can never differ from the real one.
+            recycle_bin = get_recycle_bin_root()
+            if subfolder:
+                recycle_bin = recycle_bin / subfolder
+            console.print(f"[blue]📁 {i18n.get('common.files_moved_to_recycle').format(len(deleted_files), recycle_bin)}[/blue]")
 
         # Show نهائي ملخص
         total_processed = len(deleted_files) + force_deleted_count

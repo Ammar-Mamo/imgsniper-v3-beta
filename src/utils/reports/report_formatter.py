@@ -7,6 +7,7 @@ Report formatting and text utilities
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Any, Optional
+import logging
 import imagehash
 
 from ...core.config import config, DEFAULT_PRIORITY_ORDER
@@ -306,6 +307,53 @@ class ReportFormatter:
             error_text = self.get_localized_fallback("Error reading file", "خطأ في قراءة الملف")
             return f"  ❌ {error_text}: {error_msg}"
     
+    def write_run_metadata(self, out, failed_count: int = 0,
+                           dry_run: Optional[bool] = None) -> None:
+        """Round 18: header lines that make a report self-describing.
+
+        Two facts a forensic reader needs and no report used to carry:
+
+          * WHETHER the run was a dry run. Every report looked identical either
+            way, so telling a simulation from a real deletion meant opening
+            config/settings.json and hoping it had not changed since. During the
+            round-18 investigation this had to be inferred from the absence of
+            "Moved to" lines plus an empty recycle bin.
+          * WHERE the recycle bin actually was. The bin is resolved from
+            Path.cwd(), so it depends on the launch directory; a report that does
+            not record it cannot tell you where 40 GB of "deleted" photos went.
+
+        `failed_count` is optional and only printed when non-zero: a run that
+        could not move some of its files (a full disk being the real case that
+        prompted this round) must say so IN THE REPORT, not only on a console
+        line that scrolls away.
+
+        `dry_run` overrides the config value. Round 19 needs it: a RESTORE always
+        previews first regardless of safety.dry_run_mode, so printing the global
+        setting would claim "DRY-RUN: False" for a restore that changed nothing.
+
+        Takes no new required arguments, so every existing caller keeps working.
+        """
+        try:
+            from ...core.config import config
+            from ..helpers.file_utils import get_recycle_bin_root
+
+            if dry_run is None:
+                dry_run = bool(config.get('safety.dry_run_mode', False))
+            out.write(self.get_localized_fallback(
+                'DRY-RUN', 'وضع المحاكاة') + f": {bool(dry_run)}\n")
+            out.write(self.get_localized_fallback(
+                'Recycle Bin', 'سلة المحذوفات') + f": {get_recycle_bin_root()}\n")
+            if failed_count:
+                out.write(self.get_localized_fallback(
+                    'FILES NOT MOVED (still in their original location)',
+                    'ملفات لم تُنقل (ما زالت في مكانها الأصلي)')
+                    + f": {failed_count}\n")
+        except Exception as e:
+            # A report must never fail because a metadata line could not be
+            # written; round 13 established that a report problem may not mask a
+            # completed operation.
+            logging.warning('Report run-metadata line skipped: %s', e)
+
     def write_path_lines(self, out, file_path: str,
                          moved_map: Optional[Dict[str, str]] = None) -> None:
         """Round 8: write the ORIGINAL path of a file into a report, plus

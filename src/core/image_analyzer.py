@@ -14,7 +14,9 @@ from .i18n.i18n import i18n
 from ..utils.helpers.file_utils import (get_all_images, move_to_recycle_bin,
                                         reset_session_folder,
                                         handle_protected_files_with_user_choice,
-                                        announce_scan_skips, reset_scan_skips)
+                                        announce_scan_skips, reset_scan_skips,
+                                        ensure_recycle_bin_capacity,
+                                        get_recycle_bin_root)
 from ..utils.helpers.progress_ui import live_counter
 from ..utils.helpers.image_codec import read_dimensions
 from ..utils.helpers.console_input import ask_line
@@ -230,8 +232,14 @@ class ImageAnalyzer:
         small_images, protected_count, force_deleted_count = handle_protected_files_with_user_choice(
             small_images, console, subfolder="small"
         )
-        
+
+        # Round 18: capacity gate - see ensure_recycle_bin_capacity() for the
+        # real 2 TB incident this prevents. Runs before a single file is touched.
+        if not ensure_recycle_bin_capacity(small_images, console):
+            return
+
         deleted_files = []
+        failed_files = []   # Round 18: moves that returned False or raised
         moved_map = {}   # Round 8: {original path: recycle-bin destination}
         recycle_bin = None
         
@@ -259,7 +267,13 @@ class ImageAnalyzer:
                             # destination (round 8); the display wants the folder.
                             if recycle_bin is None:
                                 recycle_bin = str(Path(result).parent)
+                    elif result is False:
+                        failed_files.append(image_path)
                 except Exception as e:
+                    # Round 18: also counted and logged, not only printed - a
+                    # console line scrolls away, the log and the total do not.
+                    logging.error("Small-images move raised for %s: %s", image_path, e)
+                    failed_files.append(image_path)
                     console.print(f"[red]❌ Error deleting {Path(image_path).name}: {e}[/red]")
                 finally:
                     progress.advance(task)
@@ -269,6 +283,14 @@ class ImageAnalyzer:
         if config.get('safety.dry_run_mode', False):
             console.print(f"[bold magenta]🔍 {i18n.get('safety.dry_run_summary').format(len(deleted_files))}[/bold magenta]")
         
+        # Round 18: failed moves are announced instead of vanishing. Every one of
+        # these files is still exactly where it was - the run simply could not
+        # move it - and the individual reasons are in imgsniper.log.
+        if failed_files:
+            console.print(f"[bold yellow]{i18n.get('safety.failed_moves_warning').format(len(failed_files))}[/bold yellow]")
+            for path in failed_files:
+                logging.error("Small-images file NOT moved: %s", path)
+
         # Show نتائج
         total_processed = len(deleted_files) + force_deleted_count
         console.print(f"[green]✅ Deleted {total_processed} small images[/green]")

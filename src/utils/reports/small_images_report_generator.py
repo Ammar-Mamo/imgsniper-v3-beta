@@ -41,6 +41,9 @@ class SmallImagesReportGenerator:
             f.write(f"{self.formatter.get_text('min_dimensions').format(f'{min_width}x{min_height}')}\n")
             f.write(f"{self.formatter.get_text('total_deleted').format(len(deleted_files))}\n")
             # Add نظام info
+            # Round 18: record whether this was a dry run and where the
+            # recycle bin actually was, so the report is self-describing.
+            self.formatter.write_run_metadata(f)
             system_stats = system_monitor.get_detailed_info()
             f.write(f"{system_stats['cpu']} | {system_stats['memory']}\n")
             f.write("=" * 60 + "\n\n")
