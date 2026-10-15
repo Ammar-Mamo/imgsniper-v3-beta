@@ -10,12 +10,13 @@ from typing import List, Dict, Any, Optional
 import logging
 import imagehash
 
+from ...core import name_provenance
 from ...core.config import config, DEFAULT_PRIORITY_ORDER
 from ...core.i18n.i18n import i18n
 from ...core.file_selector import (
     build_group_scoretable, compute_date_scores,
     compute_resolution_boost_from_pixels, compute_size_score,
-    compute_resolution_score,
+    compute_resolution_score, is_day_level_date, date_criterion_decides,
 )
 from ...utils.helpers.date_extractor import date_extractor
 from ...utils.helpers.image_codec import open_image
@@ -150,6 +151,227 @@ class ReportFormatter:
         return any(keyword in lower
                    for keyword in ('recovered', 'copy', 'duplicate', 'backup', 'temp', 'tmp'))
 
+    @staticmethod
+    def _provenance_of(file_path: str) -> int:
+        """Name-provenance class of one file (the Round 20 hard gate).
+
+        The selection engine ranks a group by (-provenance, -total, name), so a
+        report that ignored the class would describe a decision the engine never
+        made -- exactly the defect this round closes. Any failure falls back to
+        the neutral class, which can only ever UNDER-state an advantage, never
+        invent one.
+        """
+        try:
+            return name_provenance.provenance_of(Path(file_path).name)
+        except Exception:
+            return name_provenance.CLASS_NEUTRAL
+
+    @staticmethod
+    def _gate_tier_of(file_path: str) -> int:
+        """The tier the engine's hard gate compared (see name_provenance).
+
+        Ranking and deciding use the TIER; only the WORDING uses the full class,
+        so a report can call a name "original-looking" without implying that the
+        label alone is what kept it.
+        """
+        try:
+            return name_provenance.gate_tier_of(Path(file_path).name)
+        except Exception:
+            return name_provenance.CLASS_NEUTRAL
+
+    @staticmethod
+    def _effective_tier_of(file_path: str, date_decides: bool) -> int:
+        """The tier the engine ACTUALLY ranked by (round 21).
+
+        The gate is conditional now: it may veto only when the date evidence is
+        weak (no contest, or a seconds/minutes/hours gap). A report that kept
+        comparing the unconditional tier would describe a veto the engine never
+        applied -- the exact class of bug this whole round exists to remove.
+        """
+        try:
+            return name_provenance.effective_gate_tier(
+                name_provenance.provenance_of(Path(file_path).name), date_decides)
+        except Exception:
+            return name_provenance.CLASS_NEUTRAL
+
+    def _date_decides_for_group(self, group_files: List[str],
+                                all_files_info: Dict[str, Any]) -> bool:
+        """Whether the date gap in this group overrules the name-originality gate.
+
+        Computed from the SAME info dicts the scoretable is built from, through
+        the SAME helper the engine calls, so a report can never claim a different
+        winner than the engine picked.
+        """
+        dates, sources = {}, {}
+        for file_path in group_files:
+            info = all_files_info.get(file_path, {})
+            if not info or 'error' in info:
+                continue
+            dates[file_path] = self._parse_info_date(info)
+            sources[file_path] = info.get('date_source')
+        try:
+            return date_criterion_decides(dates, sources)
+        except Exception:
+            return False
+
+    def _date_gap_note(self, kept_info: Dict[str, Any], other_info: Dict[str, Any],
+                       deletion: bool = False) -> Optional[str]:
+        """The round-21 review flag: the gate won although the dates differed.
+
+        The user asked to be able to RELY on this tool, which means the borderline
+        decisions must be visible instead of buried. When the name gate decides
+        while the two dates genuinely differ -- but by less than the configured
+        threshold -- the report now says so plainly and names the gap, so a
+        decision that a human might want to overrule can be found by reading the
+        report rather than by re-auditing 65 000 groups afterwards.
+        """
+        kept_date = self._parse_info_date(kept_info)
+        other_date = self._parse_info_date(other_info)
+        if not kept_date or not other_date or kept_date == other_date:
+            return None
+        hours = abs((kept_date - other_date).total_seconds()) / 3600.0
+        threshold = config.get('priorities.name_gate_date_gap_hours', 24)
+        try:
+            threshold = float(threshold)
+        except (TypeError, ValueError):
+            threshold = 24.0
+        if hours < 1.0:
+            span_text = self._honest_reason(
+                'gap_minutes', 'less than an hour', 'أقل من ساعة')
+        elif hours < 48.0:
+            span_text = self._honest_reason(
+                'gap_hours', '{0:.0f} hours', '{0:.0f} ساعة').format(hours)
+        else:
+            span_text = self._honest_reason(
+                'gap_days', '{0:.0f} days', '{0:.0f} يوم').format(hours / 24.0)
+        text = self._honest_reason(
+            'reason_note_gate_over_older_date',
+            'review: the dates differ by {gap}, below the {threshold}-hour '
+            'threshold at which the date overrules name originality, so the '
+            'cleaner name decided ({deleted} vs {kept})',
+            'مراجعة: التاريخان يفترقان بـ {gap}، وهو دون حد {threshold} ساعة '
+            'الذي يجعل التاريخ يتجاوز أصالة الاسم، لذلك حسم الاسم الأنظف '
+            '({deleted} مقابل {kept})')
+        return str(text).format(gap=span_text, threshold=int(threshold),
+                                deleted=str(other_info.get('extracted_date', 'Unknown')),
+                                kept=str(kept_info.get('extracted_date', 'Unknown')))
+
+    def _provenance_reason(self, kept_file: str, other_file: str,
+                           deletion: bool = False) -> str:
+        """The reason line for a decision the name-provenance gate made."""
+        kept_label = name_provenance.class_label(self._provenance_of(kept_file))
+        other_label = name_provenance.class_label(self._provenance_of(other_file))
+        if deletion:
+            text = self._honest_reason(
+                'reason_name_provenance_deletion',
+                'name originality (kept: {kept} — this file: {deleted})',
+                'أصالة الاسم (المُبقى: {kept} — هذا الملف: {deleted})')
+            return str(text).format(kept=kept_label, deleted=other_label)
+        text = self._honest_reason(
+            'reason_name_provenance',
+            'name originality ({kept} beats {deleted})',
+            'أصالة الاسم ({kept} يتفوق على {deleted})')
+        return str(text).format(kept=kept_label, deleted=other_label)
+
+    def _provenance_note(self, kept_file: str, other_file: str) -> Optional[str]:
+        """A supporting note about the name classes, when they differ.
+
+        Round 21: when the weighted criteria already decided the group, the name
+        gate was never needed -- but the user still deserves to see that one side
+        carried a copy/recovery marker, because that is evidence about where each
+        file came from. It is printed as a NOTE under the real reason instead of
+        masquerading as the reason itself.
+        """
+        if self._provenance_of(kept_file) == self._provenance_of(other_file):
+            return None
+        text = self._honest_reason(
+            'reason_note_name_class',
+            'note: name originality also favoured the kept file ({kept} vs {deleted})',
+            'ملاحظة: أصالة الاسم كانت أيضًا لصالح الملف المُبقى ({kept} مقابل {deleted})')
+        return str(text).format(
+            kept=name_provenance.class_label(self._provenance_of(kept_file)),
+            deleted=name_provenance.class_label(self._provenance_of(other_file)))
+
+    def _date_precision_note(self, table: Dict[str, Any], kept_key: str,
+                             other_key: str, kept_info: Dict[str, Any],
+                             other_info: Dict[str, Any],
+                             active: set) -> Optional[str]:
+        """Explain a date criterion that the day-level gate neutralised.
+
+        This is the note whose absence made the reports unreadable: a group
+        printed two DIFFERENT dates side by side and then named some other
+        criterion as the reason, with no word about the date. The engine really
+        did score the date as a tie -- a filename date with no time in it is
+        only precise to the day, so two timestamps on the same day cannot be
+        ordered -- and now the report says exactly that instead of leaving the
+        reader to guess.
+        """
+        if 'date' in active:
+            return None                       # the date really competed
+        kept_date = self._parse_info_date(kept_info)
+        other_date = self._parse_info_date(other_info)
+        if not kept_date or not other_date or kept_date == other_date:
+            return None
+        if not (is_day_level_date(kept_date, kept_info.get('date_source'))
+                or is_day_level_date(other_date, other_info.get('date_source'))):
+            return None
+        text = self._honest_reason(
+            'reason_note_date_day_level',
+            'note: the dates differ, but a filename date in this group has '
+            'day-level precision (no time written in the name), so the date '
+            'criterion could not decide ({deleted} vs {kept})',
+            'ملاحظة: التاريخان مختلفان، لكن تاريخ اسم الملف في هذه المجموعة '
+            'دقيقته اليوم فقط (لا يوجد وقت مكتوب في الاسم)، لذلك لم يتمكن '
+            'معيار التاريخ من الحسم ({deleted} مقابل {kept})')
+        return str(text).format(
+            deleted=str(other_info.get('extracted_date', 'Unknown')),
+            kept=str(kept_info.get('extracted_date', 'Unknown')))
+
+    def _supporting_criteria_note(self, table: Dict[str, Any], kept_key: str,
+                                  other_key: str, kept_info: Dict[str, Any],
+                                  other_info: Dict[str, Any], active: set) -> Optional[str]:
+        """List the weighted criteria that ALSO favoured the kept file.
+
+        Round 20: the name-originality gate decides BEFORE the weighted sum, so
+        without this note a group would read "name originality" and hide the fact
+        that the DATE agreed -- which is precisely the confusion the user raised
+        ("a photo chosen because of the date in its name must not be reported as
+        chosen for the importance of the name"). Naming the gate is correct, but
+        it must not swallow the other evidence: when the date, resolution or size
+        point the same way, the report now says so explicitly, with the same
+        values and source labels used everywhere else.
+        """
+        kept_row, other_row = table.get(kept_key), table.get(other_key)
+        if not kept_row or not other_row:
+            return None
+        parts = []
+        for criterion in ('date', 'resolution', 'size', 'filename'):
+            if criterion not in active:
+                continue
+            if kept_row['weighted'][criterion] - other_row['weighted'][criterion] <= 1e-9:
+                continue
+            label, kept_value, other_value = self._describe_criterion(
+                criterion, kept_info, other_info)
+            parts.append(f"{label}: {kept_value} vs {other_value}")
+        if not parts:
+            return None
+        text = self._honest_reason(
+            'reason_note_also_favoured',
+            'the weighted criteria agree with this: {}',
+            'المعايير الموزونة تؤيد هذا الاختيار: {}')
+        return str(text).format(' | '.join(parts))
+
+    @staticmethod
+    def _join_notes(reason: str, notes) -> str:
+        """Append every non-empty caveat line under the reason sentence."""
+        seen = []
+        for note in notes:
+            if note and note not in seen:
+                seen.append(note)
+        if not seen:
+            return reason
+        return reason + ''.join(f"\n  {note}" for note in seen)
+
     def _describe_criterion(self, criterion: str, better_info: Dict[str, Any],
                             worse_info: Dict[str, Any]):
         """Return (label, better_value, worse_value) for one criterion pair.
@@ -180,9 +402,28 @@ class ReportFormatter:
         label = self._honest_reason('reason_older_date', 'Older date', 'تاريخ أقدم') \
             if better_is_older else \
             self._honest_reason('reason_newer_date', 'Newer date', 'تاريخ أحدث')
+        # Round 20: name WHERE each date came from. The user's exact complaint
+        # was that a photo whose date lives in its own NAME was reported as kept
+        # for "filename importance" -- so when the date really does decide, the
+        # sentence now proves it was the date, and shows that the winning
+        # timestamp was read from the filename (or from EXIF) instead of leaving
+        # the reader to reconstruct it from the file blocks.
         return (label,
-                str(better_info.get('extracted_date', 'Unknown')),
-                str(worse_info.get('extracted_date', 'Unknown')))
+                self._date_with_source(better_info),
+                self._date_with_source(worse_info))
+
+    def _date_with_source(self, info: Dict[str, Any]) -> str:
+        """'2022-07-06 14:53:47 [from filename]' -- a date plus its origin."""
+        value = str(info.get('extracted_date', 'Unknown'))
+        source = str(info.get('date_source') or '').strip().lower()
+        key, english, arabic = {
+            'filename': ('date_source_filename', 'from filename', 'من اسم الملف'),
+            'exif': ('date_source_exif', 'from EXIF', 'من EXIF'),
+            'modified': ('date_source_modified', 'file modified', 'وقت تعديل الملف'),
+        }.get(source, (None, None, None))
+        if key is None or value == 'Unknown':
+            return value
+        return f"{value} [{self._honest_reason(key, english, arabic)}]"
 
     def _criterion_decided_text(self, criterion_label: str, kept_value: str,
                                 rival_value: str) -> str:
@@ -413,31 +654,74 @@ class ReportFormatter:
                                        'Could not determine reason (file info unavailable)',
                                        'تعذر تحديد السبب (معلومات الملف غير متاحة)')
 
-        rival = max(rivals, key=lambda f: table[f]['total'])
+        # Round 20: the runner-up under the SAME ranking the engine used --
+        # (-provenance, -total, name). Choosing the rival by total alone would
+        # name a competitor the provenance gate had already eliminated, and the
+        # reason would then describe a contest that never happened.
+        # Round 21: the gate is conditional, so the report must know whether the
+        # date was strong enough to overrule it -- otherwise it would describe a
+        # veto the engine never applied.
+        date_decides = self._date_decides_for_group(group_files, all_files_info)
+        tiers = {f: self._effective_tier_of(f, date_decides) for f in group_files}
+        neutral = name_provenance.CLASS_NEUTRAL
+        rival = min(rivals, key=lambda f: (-tiers.get(f, neutral),
+                                           -table[f]['total'],
+                                           Path(f).name.lower()))
         rival_info = all_files_info.get(rival, {})
         kept_row, rival_row = table[kept_file], table[rival]
         margin = kept_row['total'] - rival_row['total']
 
         active = self._active_criteria(table)
-        advantage = None
-        best_gain = 0.0
-        for criterion in ('resolution', 'size', 'date', 'filename'):
-            if criterion not in active:
-                continue
-            gain = kept_row['weighted'][criterion] - rival_row['weighted'][criterion]
-            if gain > best_gain + 1e-9:
-                advantage, best_gain = criterion, gain
 
-        if margin > 0.05 and advantage is not None:
-            label, kept_value, rival_value = self._describe_criterion(
-                advantage, kept_info, rival_info)
-            reason = self._criterion_decided_text(label, kept_value, rival_value)
+        # Round 21: name the criterion that ACTUALLY made the difference. When the
+        # weighted sum already favoured the kept file the gate was never needed, so
+        # the honest primary reason is the criterion that won -- usually the date,
+        # the user's priority #1 -- and the name class becomes a supporting note.
+        # Claiming "name originality" there would repeat the very defect this whole
+        # round exists to remove: a date-based choice reported as a name-based one.
+        tier_gap = tiers.get(kept_file, neutral) > tiers.get(rival, neutral)
+        gate_fired = tier_gap and margin <= 0.05
+        if gate_fired:
+            # The name-provenance gate decided: a derived name (recovered /
+            # copy / a "(N)" counter / a machine carve) never survives against a
+            # more original one, whatever the weighted scores say.
+            reason = self._provenance_reason(kept_file, rival)
         else:
-            reason = self._tie_reason_text(kept_file, rival)
+            advantage = None
+            best_gain = 0.0
+            for criterion in ('resolution', 'size', 'date', 'filename'):
+                if criterion not in active:
+                    continue
+                gain = kept_row['weighted'][criterion] - rival_row['weighted'][criterion]
+                if gain > best_gain + 1e-9:
+                    advantage, best_gain = criterion, gain
 
-        note = self._compose_note(table, kept_file, rival, kept_info, rival_info, active)
-        if note:
-            reason = f"{reason}\n  {note}"
+            if margin > 0.05 and advantage is not None:
+                label, kept_value, rival_value = self._describe_criterion(
+                    advantage, kept_info, rival_info)
+                reason = self._criterion_decided_text(label, kept_value, rival_value)
+            else:
+                reason = self._tie_reason_text(kept_file, rival)
+
+        notes = [self._compose_note(table, kept_file, rival, kept_info,
+                                    rival_info, active),
+                 self._date_precision_note(table, kept_file, rival, kept_info,
+                                            rival_info, active)]
+        if tier_gap:
+            # The name classes differ, so the user always gets to see that -- as
+            # the REASON when the gate decided, as a NOTE when it did not.
+            notes.append(self._provenance_note(kept_file, rival))
+        if gate_fired:
+            # The gate outranks the weighted sum, but it must not HIDE it: when
+            # the date or the resolution point the same way the user has to see
+            # that too (their exact complaint was a date-based choice being
+            # reported as a name-based one).
+            notes.append(self._supporting_criteria_note(
+                table, kept_file, rival, kept_info, rival_info, active))
+            # Round 21: flag the borderline case -- the gate won even though the
+            # dates genuinely differed, just by less than the threshold.
+            notes.append(self._date_gap_note(kept_info, rival_info))
+        reason = self._join_notes(reason, notes)
         return self._append_sacrifice_warning(reason, kept_file, group_files)
     
     @staticmethod
@@ -560,33 +844,61 @@ class ReportFormatter:
         margin = kept_row['total'] - deleted_row['total']
         active = self._active_criteria(table)
 
-        advantage = None
-        best_gain = 0.0
-        for criterion in ('resolution', 'size', 'date', 'filename'):
-            if criterion not in active:
-                continue
-            gain = kept_row['weighted'][criterion] - deleted_row['weighted'][criterion]
-            if gain > best_gain + 1e-9:
-                advantage, best_gain = criterion, gain
-
-        if margin > 0.05 and advantage is not None:
-            label, kept_value, deleted_value = self._describe_criterion(
-                advantage, kept_info, deleted_info)
-            main = self._criterion_decided_deletion_text(
-                label, kept_value, deleted_value)
-        elif self._name_has_recovery_marker(deleted_file):
-            # Round 5 (#535) kept behaviour: the recovered/copy/bak marker is
-            # a fact about the file name. Only used when nothing scored.
-            main = self._honest_reason('reason_recovered_image',
-                                       'Recovered/backup image',
-                                       'صورة مستردة/نسخة احتياطية')
+        # Round 21: the gate is conditional on the strength of the date evidence,
+        # so this must use the SAME effective tier the engine ranked by.
+        date_decides = self._date_decides_for_group(group, all_files_info)
+        # Round 21: the gate is the REASON only when it is what made the
+        # difference. If the weighted sum already favoured the kept file, the
+        # criterion that won is the honest headline and the name class is a note.
+        tier_gap = (self._effective_tier_of(kept_file, date_decides)
+                    > self._effective_tier_of(deleted_file, date_decides))
+        gate_fired = tier_gap and margin <= 0.05
+        if gate_fired:
+            # Round 20: the name-provenance gate decided. This is the honest
+            # label for the case that used to read "Older date" while keeping a
+            # recovered carve -- the date may well have favoured the deleted
+            # file, but a derived name cannot survive against a more original
+            # one, and _compose_note below still names the advantages it had.
+            main = self._provenance_reason(kept_file, deleted_file, deletion=True)
         else:
-            # Audit round 5 (#18/#25): the old fallback ALWAYS claimed
-            # "Recovered/backup image" -- even for files with no such marker
-            # and no measurable difference. Report honestly instead.
-            main = self._tie_reason_text(kept_file, deleted_file)
+            advantage = None
+            best_gain = 0.0
+            for criterion in ('resolution', 'size', 'date', 'filename'):
+                if criterion not in active:
+                    continue
+                gain = kept_row['weighted'][criterion] - deleted_row['weighted'][criterion]
+                if gain > best_gain + 1e-9:
+                    advantage, best_gain = criterion, gain
 
-        note = self._compose_note(table, kept_file, deleted_file,
-                                  kept_info, deleted_info, active)
-        return f"{main}\n  {note}" if note else main
+            if margin > 0.05 and advantage is not None:
+                label, kept_value, deleted_value = self._describe_criterion(
+                    advantage, kept_info, deleted_info)
+                main = self._criterion_decided_deletion_text(
+                    label, kept_value, deleted_value)
+            elif self._name_has_recovery_marker(deleted_file):
+                # Round 5 (#535) kept behaviour: the recovered/copy/bak marker
+                # is a fact about the file name. Only used when nothing scored.
+                main = self._honest_reason('reason_recovered_image',
+                                           'Recovered/backup image',
+                                           'صورة مستردة/نسخة احتياطية')
+            else:
+                # Audit round 5 (#18/#25): the old fallback ALWAYS claimed
+                # "Recovered/backup image" -- even for files with no such marker
+                # and no measurable difference. Report honestly instead.
+                main = self._tie_reason_text(kept_file, deleted_file)
+
+        notes = [self._compose_note(table, kept_file, deleted_file,
+                                    kept_info, deleted_info, active),
+                 self._date_precision_note(table, kept_file, deleted_file,
+                                           kept_info, deleted_info, active)]
+        if tier_gap:
+            # Same rule as the selection reason: the name classes differ, so the
+            # user sees it -- as the REASON when the gate decided, as a NOTE when
+            # a weighted criterion already had.
+            notes.append(self._provenance_note(kept_file, deleted_file))
+        if gate_fired:
+            notes.append(self._supporting_criteria_note(
+                table, kept_file, deleted_file, kept_info, deleted_info, active))
+            notes.append(self._date_gap_note(kept_info, deleted_info))
+        return self._join_notes(main, notes)
     

@@ -196,8 +196,25 @@ _second = rg.generate_file_duplicates_report_with_info(
 P('a second report in the same second gets its own file',
   _second != _img_path, (_img_path, _second))
 P('both reports still exist', Path(_img_path).exists() and Path(_second).exists())
-P('the second one carries a numeric suffix instead of reusing the name',
-  re.fullmatch(r'.*_\d+', Path(_second).stem) is not None, Path(_second).name)
+# The numeric suffix is only the mechanism that applies when the two writes land
+# in the SAME second. Round 20: this used to be asserted unconditionally, which
+# made the suite fail whenever the clock ticked over between the two writes -- a
+# timing flake, not a regression (a fresh timestamp is an equally valid way of
+# not overwriting). The suffix is therefore required exactly when the timestamp
+# prefix is shared, and the real guarantee is asserted in BOTH cases below.
+_stamp_re = re.compile(r'^(.*?_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2})(_\d+)?$')
+_first_stamp = (_stamp_re.match(Path(_img_path).stem).group(1)
+                if _stamp_re.match(Path(_img_path).stem) else None)
+_second_match = _stamp_re.match(Path(_second).stem)
+_second_stamp = _second_match.group(1) if _second_match else None
+if _first_stamp is not None and _second_stamp == _first_stamp:
+    P('same second -> the second carries a numeric suffix instead of reusing the name',
+      bool(_second_match and _second_match.group(2)), Path(_second).name)
+else:
+    P('the second write crossed a second boundary, so the timestamp alone '
+      'already separates the two files (no suffix needed)',
+      _first_stamp != _second_stamp,
+      f'{Path(_img_path).name} vs {Path(_second).name}')
 P('the first report was NOT overwritten',
   Path(_img_path).read_text(encoding='utf-8') != Path(_second).read_text(encoding='utf-8')
   or Path(_img_path).stat().st_size > 0)

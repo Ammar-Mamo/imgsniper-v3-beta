@@ -37,6 +37,50 @@ _ARABIC_NUMBERED_COPY_RE = re.compile(r'نسخ[هة]\s*\d+')
 # stripped for MATCHING ONLY -- the score itself is never rewritten.
 _BIDI_MARKS_RE = re.compile('[\u200e\u200f\u202a-\u202e\u2066-\u2069]')
 
+# ---------------------------------------------------------------------------
+# Round 20: DATE + TIME patterns for filenames.
+#
+# extract_date_from_filename() used to return datetime(y, m, d) -- ALWAYS
+# midnight -- even for a name such as '20131213_161353.jpg' whose time is
+# plainly written in it. The 'time_patterns' attribute existed but was never
+# called by anything, so the time was silently thrown away project-wide.
+#
+# That single omission broke the DATE criterion everywhere:
+#   * every filename date looked day-level, so image_info_extractor flagged it
+#     'date only - no time in filename' even when the name carried 16:13:53;
+#   * compute_date_scores() treats a day-level date as an artifact and, when the
+#     group spanned less than a day, declared the WHOLE date criterion a tie --
+#     so the user's #1 priority was neutralised and the #4 priority (filename)
+#     decided instead. Measured on the shipped reports: 13,817 of 15,519
+#     similar-image groups and 2,843 duplicate groups.
+#
+# These patterns are STRICT by design, because a wrong time is worse than no
+# time -- it invents a comparison the file never contained:
+#   * (?<!\d) / (?!\d) anchor both ends, so a time can never be carved out of a
+#     longer digit run ('-5868218734718597913_121.jpg' stays dateless);
+#   * the time block must sit IMMEDIATELY after the date block (an optional
+#     single separator between them), so 'IMG-20181019-WA0058.jpg' yields NO
+#     time -- 'WA0058' is a WhatsApp counter, not 00:58:00;
+#   * every candidate is range-validated (h<=23, m<=59, s<=59) AND passed
+#     through datetime(), so '20189999' or '20180817_996060' never become a
+#     timestamp; they simply fall through to the date-only patterns.
+#
+# Each entry is (compiled_pattern, day_first): day_first=True means the groups
+# are ordered DD MM YYYY instead of YYYY MM DD. Groups 4-6 are always h, m, s.
+# ---------------------------------------------------------------------------
+FILENAME_DATETIME_PATTERNS = (
+    # 20131213_161353 / 20131213161353 / 20230521_142629-1 / IMG_20231004_104853_036
+    (re.compile(r'(?<!\d)(\d{4})(\d{2})(\d{2})[_\-. ]*(\d{2})(\d{2})(\d{2})(?!\d)'), False),
+    # 2022-07-12_21-49-09 / 2022.07.12 21.49.09 / 2022-07-12-21-49-09
+    (re.compile(r'(?<!\d)(\d{4})[_\-.](\d{1,2})[_\-.](\d{1,2})'
+                r'[_\-. ]+(\d{1,2})[_\-.](\d{2})[_\-.](\d{2})(?!\d)'), False),
+    # 13122013_161353 (DDMMYYYY + HHMMSS)
+    (re.compile(r'(?<!\d)(\d{2})(\d{2})(\d{4})[_\-. ]+(\d{2})(\d{2})(\d{2})(?!\d)'), True),
+    # 13-12-2013_16-13-53 (DD-MM-YYYY + HH-MM-SS)
+    (re.compile(r'(?<!\d)(\d{1,2})[_\-.](\d{1,2})[_\-.](\d{4})'
+                r'[_\-. ]+(\d{1,2})[_\-.](\d{2})[_\-.](\d{2})(?!\d)'), True),
+)
+
 
 class DateExtractor:
     """Advanced date extraction from filenames and EXIF data."""
@@ -68,10 +112,24 @@ class DateExtractor:
             r'.*(\d{4})(\d{2})(\d{2}).*',
         ]
         
-        # Time نمطs for more دقة
+        # Time patterns for more precision.
+        #
+        # Round 20: this list used to be DEAD CODE -- defined here and never
+        # called by anything, which is exactly why every filename date came out
+        # as midnight. The patterns that are actually executed now live at
+        # module level in FILENAME_DATETIME_PATTERNS, because a time can only be
+        # read safely when it is ANCHORED to the date in front of it: a bare
+        # '(\d{1,2})(\d{2})(\d{2})' matches the '0058' tail of
+        # 'IMG-20181019-WA0058.jpg' and invents 00:58:00. This attribute is kept
+        # as the human-readable mirror of those anchored patterns (same shapes,
+        # shown without their lookarounds) so the two can never drift apart.
         self.time_patterns = [
-            r'(\d{1,2})[_\-\.](\d{2})[_\-\.](\d{2})',  # HH:MM:SS
-            r'(\d{1,2})(\d{2})(\d{2})',  # HHMMSS
+            r'(\d{4})(\d{2})(\d{2})[_\-. ]*(\d{2})(\d{2})(\d{2})',   # YYYYMMDD_HHMMSS
+            r'(\d{4})[_\-.](\d{1,2})[_\-.](\d{1,2})[_\-. ]+'
+            r'(\d{1,2})[_\-.](\d{2})[_\-.](\d{2})',                  # YYYY-MM-DD_HH-MM-SS
+            r'(\d{2})(\d{2})(\d{4})[_\-. ]+(\d{2})(\d{2})(\d{2})',   # DDMMYYYY_HHMMSS
+            r'(\d{1,2})[_\-.](\d{1,2})[_\-.](\d{4})[_\-. ]+'
+            r'(\d{1,2})[_\-.](\d{2})[_\-.](\d{2})',                  # DD-MM-YYYY_HH-MM-SS
         ]
         
         # Fileاسم أهمية رتبةing
@@ -133,14 +191,55 @@ class DateExtractor:
         return text
     
     def extract_date_from_filename(self, filename: str) -> Optional[datetime]:
-        """Extract date from filename using various patterns."""
-        filename = self.normalize_arabic_numbers(filename.lower())
-        
+        """Extract the date -- and the TIME when the name genuinely carries one.
+
+        Round 20: this returned datetime(y, m, d) unconditionally, so a name
+        like '20131213_161353.jpg' lost its 16:13:53 and EVERY filename date
+        looked day-level. compute_date_scores() treats a day-level date as an
+        artifact and neutralises the whole date criterion when the group spans
+        less than a day -- which is how the user's #1 priority (date) was
+        silently replaced by the #4 one (filename) in 13,817 of 15,519
+        similar-image groups. The time is now read whenever it is really written
+        in the name, and ONLY then: see FILENAME_DATETIME_PATTERNS for the
+        anchoring and validation rules that stop a wrong time being invented.
+
+        Names with no time ('IMG-20181019-WA0058.jpg', a WhatsApp counter) keep
+        returning midnight, the honest day-level value they always had.
+        """
+        normalized = self.normalize_arabic_numbers(str(filename or '').lower())
+
+        # 1) DATE + TIME. finditer, not search: the first textual match can be
+        #    an invalid candidate inside a longer number, while a later position
+        #    still holds the real timestamp.
+        for pattern, day_first in FILENAME_DATETIME_PATTERNS:
+            for match in pattern.finditer(normalized):
+                groups = match.groups()
+                try:
+                    if day_first:
+                        day, month, year = int(groups[0]), int(groups[1]), int(groups[2])
+                    else:
+                        year, month, day = int(groups[0]), int(groups[1]), int(groups[2])
+                    hour, minute, second = (int(groups[3]), int(groups[4]),
+                                            int(groups[5]))
+                except (ValueError, TypeError):
+                    continue
+                if not (1900 <= year <= 2100 and 1 <= month <= 12 and 1 <= day <= 31):
+                    continue
+                if hour > 23 or minute > 59 or second > 59:
+                    # Those six digits are not a time. Keep looking -- the date
+                    # part may still be a valid date-only match below.
+                    continue
+                try:
+                    return datetime(year, month, day, hour, minute, second)
+                except ValueError:
+                    continue
+
+        # 2) DATE ONLY -- unchanged behaviour for a name that carries no time.
         for pattern in self.date_patterns:
-            match = re.search(pattern, filename)
+            match = re.search(pattern, normalized)
             if match:
                 groups = match.groups()
-                
+
                 try:
                     if len(groups) == 3:
                         # Determine if it's YYYY-MM-DD or DD-MM-YYYY
@@ -150,14 +249,14 @@ class DateExtractor:
                             day, month, year = int(groups[0]), int(groups[1]), int(groups[2])
                         else:
                             continue
-                        
+
                         # التحقق من صحة تاريخ
                         if 1900 <= year <= 2100 and 1 <= month <= 12 and 1 <= day <= 31:
                             return datetime(year, month, day)
-                            
+
                 except (ValueError, TypeError):
                     continue
-        
+
         return None
     
     def extract_date_from_exif(self, image_path: str) -> Optional[datetime]:

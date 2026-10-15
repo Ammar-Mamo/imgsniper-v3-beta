@@ -7,7 +7,10 @@ import math
 from pathlib import Path
 from typing import List, Optional, Tuple
 
-from .config import config, DEFAULT_PRIORITY_ORDER
+from . import name_provenance
+from .config import (config, DEFAULT_PRIORITY_ORDER,
+                     DEFAULT_NAME_GATE_DATE_GAP_HOURS)
+from .name_provenance import CLASS_NEUTRAL
 from ..utils.helpers.date_extractor import date_extractor
 from ..utils.helpers.image_codec import read_dimensions
 
@@ -115,6 +118,44 @@ def filename_scores(importances: dict) -> dict:
     return scores
 
 
+def is_day_level_date(date, source) -> bool:
+    """True when a date is precise to the DAY only.
+
+    A date read from a FILENAME that carries no time is built as
+    datetime(y, m, d) -- the midnight is an artifact of the name, not a capture
+    time. Round 20: extract_date_from_filename() now reads the time whenever the
+    name really has one, so midnight genuinely means "day-level" instead of
+    meaning "every filename date in the project".
+
+    Only the 'filename' source can be day-level: EXIF and a modification time
+    always carry a real clock reading.
+    """
+    if date is None:
+        return False
+    if str(source or '').strip().lower() != 'filename':
+        return False
+    return (date.hour, date.minute, date.second, date.microsecond) == (0, 0, 0, 0)
+
+
+def relative_date_scores(dates: dict, known: dict, want_oldest: bool) -> dict:
+    """0-10 date scores relative to the group's own range (shared helper).
+
+    `known` holds the comparable values for every file that HAS a date; a file
+    without one scores 3.0 -- below any known date, because a provable capture
+    time is a more credible "original" than no date at all.
+    """
+    lo, hi = min(known.values()), max(known.values())
+    span = (hi - lo).total_seconds()
+    scores = {}
+    for key, date in dates.items():
+        if date is None:
+            scores[key] = 3.0
+        else:
+            ratio = (known[key] - lo).total_seconds() / span
+            scores[key] = 10.0 * (1.0 - ratio) if want_oldest else 10.0 * ratio
+    return scores
+
+
 def compute_date_scores(dates: dict, want_oldest: bool, sources: dict = None) -> dict:
     """Relative date scores for a group (shared by engine and reports).
 
@@ -123,39 +164,109 @@ def compute_date_scores(dates: dict, want_oldest: bool, sources: dict = None) ->
 
     A difference only counts when it is meaningful for the PRECISION we have:
     gaps under DATE_GATE_SECONDS are ignored (a one-second EXIF difference
-    must never decide), and when any date in the group comes from a FILENAME
-    (day-level precision) gaps under a full day are ignored as well -- the
-    midnight timestamp is an artifact of the file name, not a real capture
-    time (rounds 5 #14/#239 fixed only the REPORT wording; the scoring itself
-    still rewarded the artifact until round 7). Ties score 5.0 for everyone.
+    must never decide), and when a member of the group carries a DAY-LEVEL
+    date (a filename with no time in it) everyone is compared at DAY
+    granularity -- the midnight timestamp is an artifact of the file name, not
+    a real capture time. Ties score 5.0 for everyone.
+
+    Round 20 replaced the previous rule here, which was:
+
+        any(source == 'filename') and span < 86400  ->  EVERY file scores 5.0
+
+    That was the single most damaging line in the selection engine. It threw
+    the date criterion away wholesale, and it fired in exactly the situation
+    the user cares about -- a photo whose date lives in its own name next to a
+    recovered copy whose date lives in EXIF:
+
+      * it ignored how BIG the gap was: a real 23-hour difference was discarded
+        as an "artifact";
+      * it ignored WHO was day-level: one filename date anywhere in the group
+        blinded the comparison between two precise EXIF timestamps;
+      * it fired on every filename date at all, because
+        extract_date_from_filename() never returned a time -- so 13,817 of
+        15,519 similar-image groups and 2,843 duplicate groups lost their #1
+        priority and were decided by the #4 one (filename importance) instead.
+
+    Comparing at day granularity is the honest version of the same intent: a
+    midnight artifact can never win or lose on its own 00:00:00, yet two files
+    dated on DIFFERENT days are still decided by the date, which is what the
+    priority order asks for.
     """
     known = {k: d for k, d in dates.items() if d is not None}
     if not known:
         return {key: 5.0 for key in dates}
     if len(known) == 1:
         # Exactly one known date: it wins, unknowns get 3.0
-        scores = {}
-        for key, date in dates.items():
-            if date is not None:
-                scores[key] = 10.0
-            else:
-                scores[key] = 3.0
-        return scores
+        return {key: (10.0 if date is not None else 3.0)
+                for key, date in dates.items()}
+
     lo, hi = min(known.values()), max(known.values())
-    span = (hi - lo).total_seconds()
-    if span < DATE_GATE_SECONDS:
+    if (hi - lo).total_seconds() < DATE_GATE_SECONDS:
         return {key: 5.0 for key in dates}
-    if sources and any(str(source).lower() == 'filename'
-                       for source in sources.values()) and span < 86400:
-        return {key: 5.0 for key in dates}
-    scores = {}
-    for key, date in dates.items():
-        if date is None:
-            scores[key] = 3.0
-        else:
-            ratio = (date - lo).total_seconds() / span
-            scores[key] = 10.0 * (1.0 - ratio) if want_oldest else 10.0 * ratio
-    return scores
+
+    if sources and any(is_day_level_date(known[k], sources.get(k)) for k in known):
+        days = {k: d.replace(hour=0, minute=0, second=0, microsecond=0)
+                for k, d in known.items()}
+        if len(set(days.values())) < 2:
+            # Every known date falls on the SAME day and at least one of them
+            # is only day-precise, so nothing can be said about their order.
+            return {key: 5.0 for key in dates}
+        return relative_date_scores(dates, days, want_oldest)
+
+    return relative_date_scores(dates, known, want_oldest)
+
+def date_span_seconds(dates: dict, sources: dict = None):
+    """The span the DATE criterion actually compared on, or None if it could not.
+
+    Round 21: the name-originality gate must yield whenever the date gives a
+    clear answer, so the caller needs to know HOW FAR APART the dates really
+    were. This must be measured on exactly the same basis
+    compute_date_scores() used, or the engine and the reports would disagree --
+    the engine scoring the date as a tie while a report claimed it decided, which
+    is the very defect round 20 closed. So the same three rules are replayed
+    here, in the same order:
+
+      * fewer than two known dates -> nothing to order -> None;
+      * a gap under DATE_GATE_SECONDS -> noise -> None;
+      * a day-level member present -> everyone is compared truncated to the day,
+        and if they then fall on the same day -> None.
+
+    Otherwise the effective span in seconds is returned.
+    """
+    known = {k: d for k, d in dates.items() if d is not None}
+    if len(known) < 2:
+        return None
+
+    lo, hi = min(known.values()), max(known.values())
+    if (hi - lo).total_seconds() < DATE_GATE_SECONDS:
+        return None
+
+    if sources and any(is_day_level_date(known[k], sources.get(k)) for k in known):
+        days = [d.replace(hour=0, minute=0, second=0, microsecond=0)
+                for d in known.values()]
+        if len(set(days)) < 2:
+            return None
+        lo, hi = min(days), max(days)
+
+    return (hi - lo).total_seconds()
+
+
+def date_criterion_decides(dates: dict, sources: dict = None) -> bool:
+    """True when the date gap is big enough to overrule the name-originality gate.
+
+    A seconds/minutes/hours gap means the same photo was saved or re-downloaded
+    twice -- the timestamp cannot say which came first, so the name is the only
+    real evidence and the gate stands. A gap of DAYS or more is a genuine
+    difference in capture time, and the user's #1 priority (date) decides.
+
+    The threshold is priorities.name_gate_date_gap_hours (default 24).
+    """
+    span = date_span_seconds(dates, sources)
+    if span is None:
+        return False
+    hours = config.get('priorities.name_gate_date_gap_hours',
+                       DEFAULT_NAME_GATE_DATE_GAP_HOURS)
+    return span >= name_provenance.name_gate_date_gap_seconds(hours)
 
 
 def compute_resolution_boost_from_pixels(pixels) -> float:
@@ -289,7 +400,12 @@ class FileSelector:
             except Exception:
                 importances[file_path] = 0
 
-        date_scores = self._compute_group_date_scores(files, fallback_mtime)
+        # Round 21: the raw dates are needed as well as the scores, because the
+        # GAP between them decides whether the name gate may veto at all.
+        dates, sources = self._collect_group_dates(files, fallback_mtime)
+        want_oldest = str(config.get('priorities.date_priority',
+                                     'oldest')).strip().lower() != 'newest'
+        date_scores = compute_date_scores(dates, want_oldest, sources)
         resolution_boost = self._compute_resolution_boost(files)
         enabled = {criterion: bool(config.get(f'priorities.{criterion}_priority', True))
                    for criterion in ('resolution', 'size', 'date', 'filename')}
@@ -298,15 +414,86 @@ class FileSelector:
             pixels, size_bytes, importances, date_scores,
             priority_order, resolution_boost, enabled)
 
+        # Round 20: NAME PROVENANCE is a hard gate, applied BEFORE the weighted
+        # total -- the same class-gate rule the other selection engine in this
+        # project has always used (see src/core/name_provenance.py).
+        #
+        # An EXIF date alone does not prove a file is the original: a recovery
+        # tool carves a JPEG off the disk with its EXIF intact, and that carve
+        # often carries an OLDER timestamp than the copy that survived (the
+        # survivor was re-saved by WhatsApp, a browser or an editor). Judged on
+        # the weighted sum alone, the carve won -- measured on the shipped
+        # reports: 174 similar-image groups and 172 duplicate groups kept a
+        # penalised name, and in 38 of those a CLEAN-named file was deleted
+        # instead, 37 of them explicitly "because of its older date".
+        #
+        # So the class decides first (recovered < copy < weak < neutral <
+        # original) and the weighted criteria -- in the user's own priority
+        # order -- decide only BETWEEN files of the same class. Among equally
+        # original names the older date therefore still wins, which is exactly
+        # the intended behaviour.
+        #
+        # The gate compares TIERS, not the raw five-class score: an
+        # "original-looking" name and a plain clean name sit in the SAME tier, so
+        # a camera prefix is never an absolute veto over another original. Only a
+        # DERIVED name (recovered / copy / "(N)" / backup) is pushed below. See
+        # name_provenance.gate_tier() for why that distinction is load-bearing.
+        #
+        # Round 21: the gate is no longer ABSOLUTE, because that silently
+        # inverted the user's priority order -- DATE is rank #1, yet the gate
+        # outranked it and deleted 'IMG-20180617-WA0051 (2).jpg' (2018-06-17) in
+        # favour of 'IMG-20180707-WA0042.jpg' (2018-07-07) purely because of the
+        # '(2)'. Whether the gate may veto now depends on how strong the date
+        # evidence is, decided ONCE for the whole group so the ranking stays
+        # transitive and the winner stays input-order independent (round 8):
+        #
+        #   * a seconds/minutes/HOURS gap, or no date contest at all -> the same
+        #     photo saved twice; the timestamp cannot order them, so the NAME is
+        #     the only real evidence and the gate stands;
+        #   * a gap of DAYS/months/years -> a genuine capture-time difference, so
+        #     the gate lifts and the weighted criteria decide, date first -- an
+        #     older 'photo (96).jpg' survives against a newer 'photo.jpg'.
+        #
+        # A RECOVERY TOOL's name is the single exception: it stays banned
+        # absolutely from beating a real user/camera name, whatever its EXIF says
+        # (see name_provenance.is_machine_output).
+        date_decides = date_criterion_decides(dates, sources)
+        gate = {f: name_provenance.effective_gate_tier(
+            name_provenance.provenance_of(Path(f).name), date_decides) for f in files}
+
         # Round 8: highest weighted total wins. A full-score tie is broken by
         # the FILENAME (alphabetical, case-insensitive) so the outcome is
         # DETERMINISTIC across runs -- the old "first in scan order" rule
         # could pick a different winner between two runs of the same folder.
         # If the names are identical too the files are interchangeable
         # (same name, same score), so the first one encountered is kept.
-        return min(table.keys(), key=lambda f: (-table[f]['total'],
+        return min(table.keys(), key=lambda f: (-gate.get(f, CLASS_NEUTRAL),
+                                                -table[f]['total'],
                                                 Path(f).name.lower(),
                                                 files.index(f)))
+
+    def _collect_group_dates(self, files: List[str],
+                             fallback_mtime: bool = False) -> Tuple[dict, dict]:
+        """Return (dates, sources) for a group -- the raw inputs to the scores.
+
+        Round 21: split out of _compute_group_date_scores so select_best_file can
+        measure the DATE GAP as well as the scores. The gap decides whether the
+        name-originality gate may veto at all (see date_criterion_decides), and
+        it has to be measured from the same values the scores were built from.
+        """
+        date_priority = config.get('priorities.date_priority', 'oldest')
+
+        dates = {}
+        sources = {}
+        for f in files:
+            try:
+                d, source = date_extractor.get_best_date(
+                    f, str(date_priority), fallback_mtime)
+            except Exception:
+                d, source = None, None
+            dates[f] = d
+            sources[f] = source
+        return dates, sources
 
     def _compute_group_date_scores(self, files: List[str],
                                    fallback_mtime: bool = False) -> dict:
@@ -329,17 +516,7 @@ class FileSelector:
         date_priority = config.get('priorities.date_priority', 'oldest')
         want_oldest = str(date_priority).strip().lower() != 'newest'
 
-        dates = {}
-        sources = {}
-        for f in files:
-            try:
-                d, source = date_extractor.get_best_date(
-                    f, str(date_priority), fallback_mtime)
-            except Exception:
-                d, source = None, None
-            dates[f] = d
-            sources[f] = source
-
+        dates, sources = self._collect_group_dates(files, fallback_mtime)
         return compute_date_scores(dates, want_oldest, sources)
 
 

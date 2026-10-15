@@ -36,7 +36,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from .config import config, DEFAULT_PRIORITY_ORDER
-from .file_selector import compute_date_scores, ratio_scores
+from .file_selector import (compute_date_scores, ratio_scores,
+                            date_criterion_decides)
 from .i18n.i18n import i18n
 from ..utils.helpers.date_extractor import date_extractor
 
@@ -143,10 +144,26 @@ def _tokens(stem: str) -> List[str]:
 
 
 def _match_marker(tokens: List[str], markers) -> Tuple[Optional[str], Optional[str]]:
-    """First (token, marker) where the token IS or STARTS WITH the marker."""
+    """First (token, marker) where the token IS the marker -- whole words only.
+
+    Round 20 aligned this with the image side (src/core/name_provenance.py) so
+    the two sectors reach the SAME verdict on the same kind of name. A prefix
+    test used to downgrade ordinary names that merely begin with a marker:
+    'Temple_run.mp4' read as a "temp" file and 'picturesque.mp4' as a "pic"
+    camera file -- the exact defect round 15 removed from the importance scale.
+    The tokenizer already splits on every non-alphanumeric character, so a real
+    marker usually arrives as its own token and matches exactly.
+
+    One prefix case is still accepted, because it IS the marker: a counter glued
+    straight onto the word, 'نسخة٣' (normalised to 'نسخة3') or 'copy2'. The
+    remainder must be ALL DIGITS, which is what keeps 'Temple' and 'picturesque'
+    out -- their remainders are letters.
+    """
     for token in tokens:
         for marker in markers:
-            if token == marker or token.startswith(marker):
+            if token == marker:
+                return token, marker
+            if token.startswith(marker) and token[len(marker):].isdigit():
                 return token, marker
     return None, None
 
@@ -414,7 +431,27 @@ class VideoFileSelector:
         # name never beats a clean one, whatever the dates say), then the
         # weighted total, then the modification time, then the path -- the last
         # tie-break guarantees two runs over one folder pick the same file.
-        ranked = sorted(paths, key=lambda f: (-analyses[f]['provenance'], -totals[f],
+        #
+        # Round 21 made the class gate CONDITIONAL here too, so video reaches the
+        # same verdicts as images on the same kind of name. An absolute gate
+        # silently inverted the user's priority order, in which DATE ranks first:
+        # a real capture-time gap of DAYS or more is stronger evidence than a
+        # copy marker, so the older file survives even when its name carries
+        # "(1)". A seconds/minutes/hours gap means the same clip was saved twice,
+        # the timestamp cannot order them, and the name decides.
+        #
+        # A RECOVERY TOOL's name stays banned absolutely in both cases -- a name
+        # the program invented carries no identity, so no EXIF inside it can make
+        # it the user's original.
+        date_decides = date_criterion_decides(dates, sources)
+
+        def _effective_class(path) -> int:
+            prov = analyses[path]['provenance']
+            if prov <= CLASS_RECOVERED:
+                return CLASS_RECOVERED
+            return CLASS_NEUTRAL if date_decides else prov
+
+        ranked = sorted(paths, key=lambda f: (-_effective_class(f), -totals[f],
                                               mtimes[f], str(f)))
         kept = ranked[0]
 

@@ -18,6 +18,42 @@ from typing import Dict, Any
 DEFAULT_PRIORITY_ORDER = [2, 3, 1, 4]
 
 # ---------------------------------------------------------------------------
+# Round 21: how far apart two capture dates must be before the DATE criterion
+# is allowed to overrule the name-originality gate.
+#
+# Defined ONCE here, next to DEFAULT_PRIORITY_ORDER, for the same reason: the
+# default config, the "Reset to Defaults" action and the shipped settings.json
+# must never drift apart.
+#
+# Why a threshold exists at all. The name gate says "a derived name (copy /
+# a '(N)' counter / backup) must not survive against the user's own name". But
+# the user's priority order puts DATE FIRST, and an absolute gate silently
+# inverted that: measured on the shipped reports, 'IMG-20180617-WA0051 (2).jpg'
+# was deleted in favour of 'IMG-20180707-WA0042.jpg' purely because of the '(2)'
+# -- even though it was 20 DAYS older. The '(2)' there is a WhatsApp DOWNLOAD
+# counter on a different message (WA0051 vs WA0042), not evidence about that
+# competitor at all.
+#
+# So the gap decides which evidence is stronger:
+#   * seconds / minutes / hours apart -> the same photo saved or re-downloaded
+#     twice; the timestamp cannot say which came first, so the NAME decides;
+#   * days / months / years apart -> two genuinely different capture events, and
+#     the user's #1 priority (date) decides -- the older file survives even if
+#     its name carries a copy marker.
+#
+# 24 hours is the natural boundary between those two readings, and it is a
+# setting (priorities.name_gate_date_gap_hours) so it can be tuned without code.
+# 0 lets ANY real gap overrule the gate (the date nearly always wins); a very
+# large value means the gap is never big enough, so the gate stays absolute.
+#
+# NOTE: this threshold does NOT apply to machine-generated names (a recovery
+# tool's carve, 'Recovered_jpg_file(N).jpg'). Those are banned absolutely from
+# beating a real user/camera name, whatever their EXIF says -- a name the
+# recovery program invented carries no identity at all.
+# ---------------------------------------------------------------------------
+DEFAULT_NAME_GATE_DATE_GAP_HOURS = 24
+
+# ---------------------------------------------------------------------------
 # Round 12: canonical filter values, defined ONCE here (same reasoning as
 # DEFAULT_PRIORITY_ORDER) so the "Recovery Mode" toggle and the shipped
 # settings.json can never drift apart.
@@ -125,8 +161,19 @@ class Config:
                 "resolution_priority": True,
                 "size_priority": True,
                 "date_priority": "oldest",
-                "exif_priority": "oldest",
-                "modified_name_priority": "original"
+                # Round 21: removed "exif_priority" and "modified_name_priority".
+                # Neither was read anywhere in src/ -- they were dead keys that
+                # looked like controls. exif_priority was superseded by
+                # date_priority (which now applies to BOTH filename and EXIF
+                # dates), and modified_name_priority by the name-originality gate.
+                # Round 21: how far apart two dates must be before the DATE is
+                # allowed to overrule the name-originality gate. Below it, a
+                # seconds/minutes/hours gap is treated as "the same photo saved
+                # twice" and the cleaner name wins; at or above it the gap is a
+                # real capture-time difference and the user's #1 priority (date)
+                # decides -- so an older 'photo (96).jpg' survives against a
+                # newer 'photo.jpg'. 0 lets any real gap overrule the gate.
+                "name_gate_date_gap_hours": DEFAULT_NAME_GATE_DATE_GAP_HOURS
             },
             "processing": {
                 "use_gpu": False,

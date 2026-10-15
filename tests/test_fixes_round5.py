@@ -268,11 +268,14 @@ P('unreadable file reports undetermined, not Recovered/backup',
   'Could not determine reason' in err_reason and 'Recovered' not in err_reason,
   err_reason)
 
-# A genuine "recovered" name still gets the keyword label (kept behaviour).
+# A genuine "recovered" name is now named by the Round 20 provenance gate, which
+# is strictly more informative than the old keyword label: it says WHICH side is
+# the derived one instead of only tagging the deleted file. What must never come
+# back is an INVENTED story for a file whose name says nothing.
 infos_kw = {'k.jpg': k535, 'Recovered_jpg_file(979).jpg': d535}
 dr_kw = fmt.get_deletion_reason('Recovered_jpg_file(979).jpg', 'k.jpg', infos_kw)
-P('recovered-named file still labelled Recovered/backup image',
-  dr_kw == 'Recovered/backup image', dr_kw)
+P('recovered-named file is labelled by the name-originality gate',
+  'name originality' in dr_kw and 'recovery-style name' in dr_kw, dr_kw)
 
 SEP('5) day-precision filename dates (#14/#239/#1124)')
 
@@ -283,8 +286,25 @@ sr14 = fmt.get_detailed_selection_reason(
     'samsung.jpg', ['samsung.jpg', 'Recovered_jpg_file(979).jpg'], infos14)
 P('#14 same-day filename-vs-EXIF no longer reports older extracted date',
   'older extracted date' not in sr14, sr14.splitlines()[0])
-P('#14 falls through to filename importance (the honest criterion)',
-  'filename importance' in sr14, sr14.splitlines()[0])
+# Round 20: the surviving reason is now the name-originality gate rather than
+# "filename importance" -- the derived name is what actually lost. The point of
+# #14 is unchanged and still asserted above: the day-level filename date must
+# never be reported as an older/newer DATE.
+P('#14 falls through to an honest criterion (never a fabricated date claim)',
+  'name originality' in sr14 or 'filename importance' in sr14,
+  sr14.splitlines()[0])
+
+# Round 20: when BOTH names are equally original the gate does not fire, the
+# date criterion is neutralised by the day-level precision -- and the report
+# must SAY SO instead of silently naming some other criterion. This is the note
+# whose absence made the shipped reports unreadable.
+k14b = info(0.9, 2560 * 1536, 2560, 1536, '2022-07-20 00:00:00', 'filename', 6)
+d14b = info(0.9, 2560 * 1536, 2560, 1536, '2022-07-20 16:42:06', 'exif', 2)
+infos14b = {'samsung.jpg': k14b, '20220720_gallery.jpg': d14b}
+sr14b = fmt.get_detailed_selection_reason(
+    'samsung.jpg', ['samsung.jpg', '20220720_gallery.jpg'], infos14b)
+P('#14b a neutralised date criterion is EXPLAINED by the day-level note',
+  'day-level precision' in sr14b, sr14b)
 
 k1124 = info(1.36, 1080 * 2340, 1080, 2340, '2025-04-25 04:21:34', 'exif', 8)
 d1124 = info(1.36, 1080 * 2340, 1080, 2340, '2025-05-25 23:32:21', 'exif', 8)

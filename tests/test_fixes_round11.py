@@ -636,30 +636,48 @@ SEP('D. Canonical selection: original names first, then the OLDER date')
 # --------------------------------------------------------------------------
 selector = VideoFileSelector()
 
-# The exact group the user described: same bytes, most times named by a copy
-# suffix, one recovery-style name, and the oldest copy carries a suffix.
+# --------------------------------------------------------------------------
+# Round 21 changed this policy and this fixture with it. Round 20 made the
+# provenance gate ABSOLUTE, so a copy-suffixed name lost on its name alone.
+# That silently inverted priorities.order, in which DATE ranks #1, and it
+# deleted real older files -- 'IMG-20180617-WA0051 (2).jpg' (2018-06-17) lost to
+# 'IMG-20180707-WA0042.jpg' (2018-07-07) purely because of a WhatsApp download
+# counter that says nothing about that competitor. The user's ruling:
+#
+#   * a copy / '(N)' name that is older by DAYS, months or years SURVIVES --
+#     the date is priority #1 and a name marker never outranks it;
+#   * a gap of seconds, minutes or HOURS is not a real difference, so there the
+#     clean name wins;
+#   * a RECOVERY TOOL's name never beats a real user/camera name, whatever the
+#     date says -- the program invented that name, so it carries no identity.
+#
+# So the fixture is now three groups, one per half of that policy, instead of
+# one group that only proved the absolute gate.
 KEEP_DIR = TEST_DIR / 'keep'
+# D1 -- no real date contest. Every name encodes the SAME day (the honest
+# WhatsApp/backup shape: one photo, several named copies) and every file shares
+# one timestamp, so the date criterion genuinely cannot order them and the NAME
+# is the only evidence left. That is the one situation where the gate may veto.
 KEEP_NAMES = {
-    '20180817.mp4': (2021, 1, 1),
-    '20180817 (1).mp4': (2020, 1, 1),
-    '20180817 (2).mp4': (2019, 1, 1),
-    'Recovered.mp4': (2018, 1, 1),
-    'Movie - Copy.mp4': (2016, 1, 1),
+    'VID_20180817.mp4': (2021, 1, 1),
+    'VID_20180817 (1).mp4': (2021, 1, 1),
+    'VID_20180817 (2).mp4': (2021, 1, 1),
+    'VID_20180817 Recovered.mp4': (2021, 1, 1),
+    'VID_20180817 - Copy.mp4': (2021, 1, 1),
 }
 for name, stamp in KEEP_NAMES.items():
     write_video(KEEP_DIR, name, stamp=stamp)
 
 keep_mp4 = [str(KEEP_DIR / name) for name in KEEP_NAMES if name.endswith('.mp4')]
 kept, decisions = selector.select_best_file(keep_mp4)
-P('the original-looking name survives, not the oldest copy-suffixed one',
-  Path(kept).name == '20180817.mp4', Path(kept).name)
-P('the copy-suffixed file lost even though its date is OLDER in one case',
-  not decisions[str(KEEP_DIR / '20180817 (1).mp4')]['is_kept']
-  or Path(kept).name != '20180817 (1).mp4')
-P('the recovery-style file lost to every clean name',
-  not decisions[str(KEEP_DIR / 'Recovered.mp4')]['is_kept'])
-P('the copy-named file lost too',
-  not decisions[str(KEEP_DIR / 'Movie - Copy.mp4')]['is_kept'])
+P('D1 with no date to compare, the original-looking name survives',
+  Path(kept).name == 'VID_20180817.mp4', Path(kept).name)
+P('D1 the copy-suffixed file lost',
+  not decisions[str(KEEP_DIR / 'VID_20180817 (1).mp4')]['is_kept'])
+P('D1 the recovery-style file lost to every clean name',
+  not decisions[str(KEEP_DIR / 'VID_20180817 Recovered.mp4')]['is_kept'])
+P('D1 the copy-named file lost too',
+  not decisions[str(KEEP_DIR / 'VID_20180817 - Copy.mp4')]['is_kept'])
 P('every file in the group gets a decision record',
   set(decisions) == set(keep_mp4), len(decisions))
 P('exactly one file per group is marked as kept',
@@ -683,13 +701,44 @@ P('the kept file wins on provenance, so no date argument is invented',
   ('provenance' in REASONS or 'أصالة' in REASONS)
   and ('older valid date' not in REASONS and 'newer valid date' not in REASONS),
   decisions[kept]['reasons'])
-DELETED_REASONS = '\n'.join(decisions[str(KEEP_DIR / '20180817 (1).mp4')]['reasons'])
+DELETED_REASONS = '\n'.join(decisions[str(KEEP_DIR / 'VID_20180817 (1).mp4')]['reasons'])
 P('a deleted file explains ITSELF: the copy suffix is named, and who won',
-  '(1)' in DELETED_REASONS and '20180817.mp4' in DELETED_REASONS,
-  decisions[str(KEEP_DIR / '20180817 (1).mp4')]['reasons'])
+  '(1)' in DELETED_REASONS and 'VID_20180817.mp4' in DELETED_REASONS,
+  decisions[str(KEEP_DIR / 'VID_20180817 (1).mp4')]['reasons'])
 P('the reason engine blames the real criterion (provenance here)',
   'provenance' in DELETED_REASONS or 'أصالة' in DELETED_REASONS,
-  decisions[str(KEEP_DIR / '20180817 (1).mp4')]['reasons'])
+  decisions[str(KEEP_DIR / 'VID_20180817 (1).mp4')]['reasons'])
+
+# D2 -- THE Round 21 policy: a copy-named file whose date is YEARS older
+# survives, because the date is priority #1. The absolute gate used to delete it.
+OLDER_DIR = TEST_DIR / 'older_copy'
+for name, stamp in (('VID-20180617-WA0051 (2).mp4', (2021, 1, 1)),
+                    ('VID-20180707-WA0042.mp4', (2021, 1, 1))):
+    write_video(OLDER_DIR, name, stamp=stamp)
+older_paths = [str(OLDER_DIR / 'VID-20180707-WA0042.mp4'),
+               str(OLDER_DIR / 'VID-20180617-WA0051 (2).mp4')]
+kept_older, older_decisions = selector.select_best_file(older_paths)
+P('D2 a copy-suffixed name 20 DAYS older SURVIVES (date is priority #1)',
+  Path(kept_older).name == 'VID-20180617-WA0051 (2).mp4', Path(kept_older).name)
+P('D2 the decision says the DATE decided it, not the name',
+  'date' in '\n'.join(older_decisions[kept_older]['reasons']),
+  older_decisions[kept_older]['reasons'])
+
+# D3 -- the surviving absolute ban: a RECOVERY TOOL's name never wins, even when
+# its date is years older. The program invented that name; it is not identity.
+REC_DIR = TEST_DIR / 'recovered_old'
+for name, stamp in (('recovered_20100101.mp4', (2010, 1, 1)),
+                    ('VID-20190815-WA0136.mp4', (2019, 1, 1))):
+    write_video(REC_DIR, name, stamp=stamp)
+rec_paths = [str(REC_DIR / 'recovered_20100101.mp4'),
+             str(REC_DIR / 'VID-20190815-WA0136.mp4')]
+kept_rec, rec_decisions = selector.select_best_file(rec_paths)
+P('D3 a recovered name 9 YEARS older still LOSES to a real camera name',
+  Path(kept_rec).name == 'VID-20190815-WA0136.mp4', Path(kept_rec).name)
+P('D3 ...and says so on provenance grounds, not on the date',
+  'provenance' in '\n'.join(rec_decisions[kept_rec]['reasons'])
+  or 'أصالة' in '\n'.join(rec_decisions[kept_rec]['reasons']),
+  rec_decisions[kept_rec]['reasons'])
 
 # --- among equally original names, the OLDER date wins ---------------------
 DATES_DIR = TEST_DIR / 'dated'
@@ -763,13 +812,13 @@ del_out = del_console.file.getvalue()
 
 survivors = sorted(p.name for p in RUN_DIR.iterdir())
 P('exactly one file survives the group, and it is the original-looking one',
-  survivors == ['20180817.mp4'], survivors)
+  survivors == ['VID_20180817.mp4'], survivors)
 
 moved = sorted(p.name for p in bin_video.rglob('*.mp4')) if bin_video.exists() else []
 _moved.extend(bin_video.rglob('*.mp4'))
 P('every removed copy landed in the VIDEO recycle bin',
-  moved == ['20180817 (1).mp4', '20180817 (2).mp4', 'Movie - Copy.mp4',
-            'Recovered.mp4'], moved)
+  moved == ['VID_20180817 (1).mp4', 'VID_20180817 (2).mp4',
+            'VID_20180817 - Copy.mp4', 'VID_20180817 Recovered.mp4'], moved)
 P('the console points the user at the video recycle bin',
   str(bin_video) in del_out, [line for line in del_out.splitlines()
                               if 'duplicates-video' in line][:1])

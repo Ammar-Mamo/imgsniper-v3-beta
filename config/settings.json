@@ -5,26 +5,19 @@
     "language": "en",
     "priorities": {
         "_comment": "أولويات اختيار أفضل صورة من المجموعات المتشابهة",
+        "_comment_removed_settings": "Round 21 removed four settings that NO code ever read: exif_priority, modified_name_priority, quality_priority and format_priority. They looked like controls but changed nothing -- the same guarantee a removed setting gave in audit P3-8 (create_backup / preserve_originals). What actually governs the choice: priorities.order (ranks), the four <criterion>_priority toggles below, date_priority, and name_gate_date_gap_hours.",
         "resolution_priority": true,
         "size_priority": true,
         "date_priority": "oldest",
-        "exif_priority": "oldest",
-        "modified_name_priority": "original",
         "filename_priority": true,
-        "quality_priority": true,
-        "format_priority": [
-            "jpg",
-            "png",
-            "tiff",
-            "bmp",
-            "gif"
-        ],
         "order": [
             2,
             3,
             1,
             4
-        ]
+        ],
+        "_comment_name_gate_date_gap_hours": "كم ساعة يجب أن يفترق التاريخان قبل أن يُسمح للتاريخ بتجاوز بوابة أصالة الاسم. أقل من ذلك (ثواني/دقائق/ساعات) يُعتبر نفس الصورة محفوظة مرتين فيحسم الاسم الأنظف؛ وأكبر من ذلك (أيام/شهور/سنوات) فرق حقيقي فيحسم التاريخ الأقدم ولو كان الاسم نسخة. لا ينطبق على أسماء برامج الاسترداد فهي ممنوعة مطلقاً من الفوز على اسم حقيقي",
+        "name_gate_date_gap_hours": 24
     },
     "processing": {
         "_comment": "إعدادات المعالجة والأداء - معدلة لتوازن أفضل",

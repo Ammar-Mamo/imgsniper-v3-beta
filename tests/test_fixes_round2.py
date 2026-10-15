@@ -340,6 +340,13 @@ restore_cfg()
 # =====================================================================
 SEP('FIX B+D integration -- audit P0-1 fixture (4 images x order permutations)')
 # =====================================================================
+# Round 20 made the name-provenance gate ABSOLUTE and this fixture was rewritten
+# to match (the "(1)" copy lost on its name alone). Round 21 made the gate
+# CONDITIONAL -- it may veto only when the date evidence is weak -- so the
+# ORIGINAL P0-1 guarantee is back: this group spans 2010..2024, the date
+# criterion decides, the gate lifts, and the weighted criteria keep the
+# high-resolution image exactly as they did before round 20.
+# The Round 21 policy itself is asserted in tests/test_fixes_round20.py section H.
 p01 = TEST_DIR / 'p01'
 p01.mkdir(parents=True, exist_ok=True)
 FIXTURE = [('IMG_20100101_original.jpg', 100, 100),
@@ -364,7 +371,7 @@ config.set('priorities.date_priority', 'oldest')
 # HARD requirement: the shipped/default order must keep the high-resolution image.
 config.set('priorities.order', list(DEFAULT_PRIORITY_ORDER))
 kept_def = sel.select_best_file(p01_files)
-P('DEFAULT order [1,2,3,4] keeps the 3000x3000 image (P0-1 closed)',
+P('DEFAULT order keeps the 3000x3000 image (P0-1 closed)',
   _px(kept_def) == BIG, 'kept=' + Path(kept_def).name + ' px=' + str(_px(kept_def)))
 
 # Determinism across every permutation: input order must never change the winner.

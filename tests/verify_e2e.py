@@ -61,6 +61,14 @@ def make_img(path, w, h, color=None):
 # SCENARIO 1: The ORIGINAL data-loss bug from the audit.
 # Before the fix the 823-byte 100x100 "original" was KEPT and the 142KB
 # 3000x3000 photo was DELETED. After the fix the high-res image wins.
+#
+# Round 20 made the name-provenance gate ABSOLUTE, which inverted this: the
+# "(1)" copy lost on its name alone. Round 21 made the gate CONDITIONAL again --
+# it may veto only when the date evidence is weak. This fixture spans 2010..2024,
+# so the date criterion decides, the gate lifts, and the weighted criteria settle
+# it exactly as they did before round 20: the high-resolution image survives.
+# The Round 21 policy itself (a copy older by DAYS survives; a recovered name
+# never does) is asserted in tests/test_fixes_round20.py section H.
 # =====================================================================
 section('SCENARIO 1 -- Original data-loss bug (high-res must survive)')
 from src.core.file_selector import FileSelector

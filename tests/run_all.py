@@ -41,6 +41,7 @@ SUITES = [
     ('test_fixes_round16.py', 'Round 16 -- numbered-copy detection covers ANY number in parentheses, and Arabic copy wording (نسخة / Arabic-Indic digits / bidi marks) is detected at all'),
     ('test_fixes_round18.py', 'Round 18 -- the recycle-bin MOVE path: per-source folder structure, free-space gate before deleting, husk cleanup + size verification on failure, and a dry run that finally computes the real destination'),
     ('test_fixes_round19.py', 'Round 19 -- UNDO: per-section restore from the deletion reports, "Moved to" treated as a hint (reported name -> original name -> collision suffix), copy-not-move, never overwrite, dry-run preview first, and a restore report that is never re-read as a deletion'),
+    ('test_fixes_round20.py', 'Round 20 -- the DATE criterion stops being silently neutralised: the time is read from the filename, the day gate is precision-aware, and name provenance (original > neutral > weak > copy > recovered) gates the choice so a recovered carve can never beat the user\'s own named file'),
 ]
 
 
